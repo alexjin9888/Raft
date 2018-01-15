@@ -1,4 +1,8 @@
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectInputStream;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -11,7 +15,7 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
-/* 
+/* TODO add throw exceptions for methods
  * 
  * 
  * 
@@ -49,14 +53,9 @@ public class Server implements Runnable {
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
             // Create a buffer to store request data
-            ByteBuffer buffer = ByteBuffer.allocate(256);
+            ByteBuffer buffer = ByteBuffer.allocate(1024);
             boolean done = false;
-
-            // TODO: not sure if this code is needed
-//            for (int i=0; i<otherAddresses.length; i++) {
-//                socketChannels[i].register(selector, SelectionKey.OP_READ, messagesQueue[i]);
-//            }
-
+            
             while(!done) {
                 System.out.println("[" + serverId + "]: about to enter timeout");
                 long timeout = ThreadLocalRandom.current().nextInt(150, 300 + 1);
@@ -92,13 +91,21 @@ public class Server implements Runnable {
                           while (bytesRead != -1) {
                               System.out.println("[" + serverId + "]: read " + bytesRead + " bytes");
                               buffer.flip();
-                              String receivedString = "";
+                              ByteArrayOutputStream messageBytes = new ByteArrayOutputStream();
                               while(buffer.hasRemaining()) {
 //                                  System.out.println("Buffer has remaining");
 //                                  System.out.print((char) buffer.get());
-                                  receivedString += (char) buffer.get();
+                                  messageBytes.write(buffer.get());
                               }
-                              System.out.println("[" + serverId + "]: " + receivedString);
+                              ByteArrayInputStream bis = new ByteArrayInputStream(messageBytes.toByteArray());
+                              ObjectInput in = new ObjectInputStream(bis);
+                              AppendEntriesRequest message = null;
+                              try {
+                                  message = (AppendEntriesRequest) in.readObject();
+                              } catch (ClassNotFoundException e) {
+                                  e.printStackTrace();
+                              }
+                              System.out.println("[" + serverId + "]: " + message);
                               buffer.clear();
                               bytesRead = clientChannel.read(buffer);
                           }
@@ -126,47 +133,13 @@ public class Server implements Runnable {
 
     public void broadcast() {
  
-
         System.out.println("[" + serverId + "]: broadcasting");
         
         ByteBuffer buffer = ByteBuffer.allocate(256);
         
         for (int i=0; i<otherAddresses.length; i++) {
-            try {
-                socketChannels[i] = SocketChannel.open(otherAddresses[i]);
-                socketChannels[i].configureBlocking(false);
-            } catch (IOException e1) {
-                e1.printStackTrace();
-            }
-//            messagesQueue[i] = ByteBuffer.allocate(256);
-//            try {
-//                // pass
-//                socketChannels[i].connect(otherAddresses[i]);
-//                //TODO remove while loop
-//                while(!socketChannels[i].finishConnect()) {
-//                    // pass
-//                }
-//            } catch (IOException e1) {
-//                // TODO Auto-generated catch block
-//                e1.printStackTrace();
-//            }
-            buffer.clear();
-            buffer.put(("Hello World from " + serverId).getBytes());
-            buffer.flip();
-            while(buffer.hasRemaining()) {
-                try {
-                    socketChannels[i].write(buffer);
-                } catch (IOException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
-                }
-            }
-            try {
-                socketChannels[i].close();
-            } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
+            String[] entries = {};
+            RPCUtils.sendAppendEntriesRPC(otherAddresses[i], 0, 0, 0, 0, entries, 0);
         }
     }
 }
