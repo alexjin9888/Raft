@@ -58,7 +58,7 @@ public class Server implements Runnable {
 //            }
 
             while(!done) {
-                System.out.println(serverId + " about to enter timeout");
+                System.out.println("[" + serverId + "]: about to enter timeout");
                 long timeout = ThreadLocalRandom.current().nextInt(150, 300 + 1);
                 readyChannels = selector.select(timeout);
 //                System.out.println(serverId+ " has " + readyChannels + " readyChannels ");
@@ -67,35 +67,38 @@ public class Server implements Runnable {
                     // TODO: change server mode
                     broadcast();
                 } else {
-                    System.out.println(serverId + " about to iterate over keys");
+                    System.out.println("[" + serverId + "]: about to iterate over keys");
                     Set<SelectionKey> selectedKeys = selector.selectedKeys();
 
                     Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-                    System.out.println(serverId+ " has " + selectedKeys.size() + " selected keys");
+                    System.out.println("[" + serverId+ "]: has " + selectedKeys.size() + " selected keys");
 
                     while(keyIterator.hasNext()) {
 
                       SelectionKey key = keyIterator.next();
 
                       if(key.isAcceptable()) {
-                          System.out.println(serverId + " about to accept");
+                          System.out.println("[" + serverId + "]: about to accept");
                           SocketChannel clientChannel = serverChannel.accept();
                           clientChannel.configureBlocking(false);
                           clientChannel.register(selector, SelectionKey.OP_READ);
                       } else if (key.isConnectable()) {
-                          System.out.println(serverId + " about to connect");
+                          System.out.println("[" + serverId + "]: about to connect");
                           // pass
                       } else if (key.isReadable()) {
-                          System.out.println(serverId + " about to read");
+                          System.out.println("[" + serverId + "]: about to read");
                           SocketChannel clientChannel = (SocketChannel) key.channel();
                           int bytesRead = clientChannel.read(buffer);
                           while (bytesRead != -1) {
-                              System.out.println(serverId + " read " + bytesRead);
+                              System.out.println("[" + serverId + "]: read " + bytesRead + " bytes");
                               buffer.flip();
+                              String receivedString = "";
                               while(buffer.hasRemaining()) {
 //                                  System.out.println("Buffer has remaining");
-                                  System.out.print((char) buffer.get());
+//                                  System.out.print((char) buffer.get());
+                                  receivedString += (char) buffer.get();
                               }
+                              System.out.println("[" + serverId + "]: " + receivedString);
                               buffer.clear();
                               bytesRead = clientChannel.read(buffer);
                           }
@@ -103,7 +106,7 @@ public class Server implements Runnable {
                           clientChannel.close();
                           // TODO: need to write logic to respond to client
                       } else if (key.isWritable()) {
-                          System.out.println(serverId + " about to write");
+                          System.out.println("[" + serverId + "]: about to write");
 //                          SocketChannel clientChannel = (SocketChannel) key.channel();
 //                          ByteBuffer messageBuffer = (ByteBuffer) key.attachment();
 //                          while(messageBuffer.hasRemaining()) {
@@ -124,7 +127,7 @@ public class Server implements Runnable {
     public void broadcast() {
  
 
-        System.out.println(serverId + " broadcasting");
+        System.out.println("[" + serverId + "]: broadcasting");
         
         ByteBuffer buffer = ByteBuffer.allocate(256);
         
@@ -148,7 +151,7 @@ public class Server implements Runnable {
 //                e1.printStackTrace();
 //            }
             buffer.clear();
-            buffer.put(("Hello World from " + serverId + "\n").getBytes());
+            buffer.put(("Hello World from " + serverId).getBytes());
             buffer.flip();
             while(buffer.hasRemaining()) {
                 try {
