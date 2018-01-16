@@ -9,8 +9,9 @@ public class RequestVoteReply extends Message {
         return "RequestVoteReply [term=" + term + ", voteGranted=" + voteGranted
                 + "]";
     }
-    public RequestVoteReply(int term, boolean voteGranted) {
+    public RequestVoteReply(String serverId, int term, boolean voteGranted) {
         super();
+        this.serverId = serverId;
         this.term = term;
         this.voteGranted = voteGranted;
     }

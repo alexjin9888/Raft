@@ -12,9 +12,10 @@ public class AppendEntriesRequest extends Message {
     String[] entries;   // log entries to store (empty for heartbeat;
                         // may send more than one for efficiency)
     int leaderCommit;   //leader's commitIndex
-    public AppendEntriesRequest(int term, int leaderId, int prevLogIndex,
+    public AppendEntriesRequest(String serverId, int term, int leaderId, int prevLogIndex,
             int prevLogTerm, String[] entries, int leaderCommit) {
         super();
+        this.serverId = serverId;
         this.term = term;
         this.leaderId = leaderId;
         this.prevLogIndex = prevLogIndex;

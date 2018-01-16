@@ -32,6 +32,8 @@ public class Server implements Runnable {
     private InetSocketAddress myAddress;
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
     private String role;
+    
+    private ServerSocketChannel myListenerChannel;
     private Selector selector;
 
     // TODO Add detailed comments to instance variables
@@ -62,30 +64,35 @@ public class Server implements Runnable {
             }
         }
         role = "Follower";
+
+        // Create a server to listen and respond to requests
+        try {
+            myListenerChannel = ServerSocketChannel.open();
+            myListenerChannel.configureBlocking(false);
+            myListenerChannel.socket().bind(myAddress);   
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
         // TODO initialize other private instance vars
     }
 
     // Startup the server
     public void run() {
         try {
-            // Create a server to listen and respond to requests
-            ServerSocketChannel serverChannel = ServerSocketChannel.open();
-            serverChannel.configureBlocking(false);
-            serverChannel.socket().bind(myAddress);
-
             while(true) {
                 selector = Selector.open();
-                serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+                myListenerChannel.register(selector, SelectionKey.OP_ACCEPT);
                 // 3 While loops for different roles
                 switch (role) {
                     case "Follower":
-                        followerListenAndRespond(serverChannel);
+                        followerListenAndRespond();
                         break;
                     case "Candidate": 
-                        candidateRunForElection(serverChannel);
+                        candidateRunForElection();
                         break;
                     case "Leader":
-                        leaderListenAndBroadcast(serverChannel);
+                        leaderListenAndBroadcast();
                         break;
                     default:
                         assert(false);
@@ -114,19 +121,19 @@ public class Server implements Runnable {
         }
     }
 
-    private void acceptConnection(ServerSocketChannel serverChannel) throws IOException {
+    private void acceptConnection() throws IOException {
         logMessage("about to accept");
-        SocketChannel clientChannel = serverChannel.accept();
+        SocketChannel clientChannel = myListenerChannel.accept();
         clientChannel.configureBlocking(false);
         clientChannel.register(selector, SelectionKey.OP_READ);
     }
-    
+
     // TODO: replace this with another logging mechanism
     private void logMessage(Object message) {
         System.out.println("[" + myId + " " + role + "]:" + message);
     }
 
-    private void followerListenAndRespond(ServerSocketChannel serverChannel) throws IOException {
+    private void followerListenAndRespond() throws IOException {
         int readyChannels = 0;
         long timeout = 0;
         Date beforeSelectTime = null;
@@ -154,7 +161,7 @@ public class Server implements Runnable {
                     SelectionKey key = keyIterator.next();
 
                     if(key.isAcceptable()) {
-                        acceptConnection(serverChannel);
+                        acceptConnection();
                     } else if (key.isConnectable()) {
                         logMessage("about to connect");
                         // pass
@@ -167,7 +174,7 @@ public class Server implements Runnable {
                             // TODO check leader validity before accepting it (if-else)
                             logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
-                            AppendEntriesReply reply = new AppendEntriesReply(-1, true);
+                            AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
                             RPCUtils.sendMessage(channel, reply);
                             resetTimeout = true;
                         } else if (message instanceof RequestVoteRequest) {
@@ -176,10 +183,10 @@ public class Server implements Runnable {
                             // TODO only vote true for the first valid request (update boolean check)
                             RequestVoteReply reply = null;
                             if (true) {
-                                reply = new RequestVoteReply(-1, true);
+                                reply = new RequestVoteReply(myId, -1, true);
                                 resetTimeout = true;
                             } else {
-                                reply = new RequestVoteReply(-1, false);
+                                reply = new RequestVoteReply(myId, -1, false);
                             }
                             RPCUtils.sendMessage(channel, reply);
                         } else {
@@ -201,9 +208,9 @@ public class Server implements Runnable {
         }
     }
 
-    private void candidateRunForElection(ServerSocketChannel serverChannel) throws IOException {
-        int votesReceived = 0;
+    private void candidateRunForElection() throws IOException {
         int readyChannels = 0;
+        int votesReceived = 0;
         long timeout = 0;
         Date beforeSelectTime = null;
         Date currTime = null;
@@ -216,7 +223,7 @@ public class Server implements Runnable {
                 currentTerm += 1;
                 votesReceived = 1;
                 resetTimeout = false;
-                broadcast(new RequestVoteRequest(1338, 0, 0, 0));
+                broadcast(new RequestVoteRequest(myId, 1338, 0, 0, 0));
             }
             logMessage("about to enter timeout");
             readyChannels = selector.select(timeout);
@@ -233,7 +240,7 @@ public class Server implements Runnable {
                     SelectionKey key = keyIterator.next();
 
                     if(key.isAcceptable()) {
-                        acceptConnection(serverChannel);
+                        acceptConnection();
                     } else if (key.isConnectable()) {
                         logMessage("about to connect");
                         // pass
@@ -256,7 +263,7 @@ public class Server implements Runnable {
                             // TODO check leader validity before accepting it
                             logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
-                            AppendEntriesReply reply = new AppendEntriesReply(-1, true);
+                            AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
                             RPCUtils.sendMessage(channel, reply);
                             role = "Follower";
                             channel.close();
@@ -265,7 +272,7 @@ public class Server implements Runnable {
                             // TODO check leader validity before accepting it
                             logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
-                            RequestVoteReply reply = new RequestVoteReply(-1, false);
+                            RequestVoteReply reply = new RequestVoteReply(myId, -1, false);
                             RPCUtils.sendMessage(channel, reply);
                         } else {
                             assert(false);
@@ -286,7 +293,7 @@ public class Server implements Runnable {
         }
     }
 
-    private void leaderListenAndBroadcast(ServerSocketChannel serverChannel) throws IOException {
+    private void leaderListenAndBroadcast() throws IOException {
         int readyChannels = 0;
         Date lastHeartbeatTime = null;
         Date currTime = null;
@@ -297,7 +304,7 @@ public class Server implements Runnable {
                 currTime = Date.from(Instant.now());
                 if(lastHeartbeatTime==null || currTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
                     String[] entries = {};
-                    broadcast(new AppendEntriesRequest(1337, 0, 0, 0, entries, 0));
+                    broadcast(new AppendEntriesRequest(myId, 1337, 0, 0, 0, entries, 0));
                     lastHeartbeatTime = Date.from(Instant.now());
                 }
             } else {
@@ -311,7 +318,7 @@ public class Server implements Runnable {
                     SelectionKey key = keyIterator.next();
 
                     if(key.isAcceptable()) {
-                        acceptConnection(serverChannel);
+                        acceptConnection();
                     } else if (key.isConnectable()) {
                         logMessage("about to connect");
                         // pass
@@ -324,10 +331,10 @@ public class Server implements Runnable {
                         } else if (message instanceof RequestVoteRequest) {
                             // TODO check term
                         } else if (message instanceof AppendEntriesRequest) {
-                            // TODO check leader validity before accepting it
+                            // TODO check leader validity before accepting it (if-else)
                             logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
-                            AppendEntriesReply reply = new AppendEntriesReply(-1, true);
+                            AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
                             RPCUtils.sendMessage(channel, reply);
                             role = "Follower";
                             channel.close();

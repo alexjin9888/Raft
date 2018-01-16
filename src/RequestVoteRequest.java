@@ -12,9 +12,10 @@ public class RequestVoteRequest extends Message {
                 + candidateId + ", lastLogIndex=" + lastLogIndex
                 + ", lastLogTerm=" + lastLogTerm + "]";
     }
-    public RequestVoteRequest(int term, int candidateId, int lastLogIndex,
+    public RequestVoteRequest(String serverId, int term, int candidateId, int lastLogIndex,
             int lastLogTerm) {
         super();
+        this.serverId = serverId;
         this.term = term;
         this.candidateId = candidateId;
         this.lastLogIndex = lastLogIndex;

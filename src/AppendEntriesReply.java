@@ -2,8 +2,9 @@
  * Reply to AppendEntriesRPCMessages   
  */
 public class AppendEntriesReply extends Message {
-    public AppendEntriesReply(int term, boolean success) {
+    public AppendEntriesReply(String serverId, int term, boolean success) {
         super();
+        this.serverId = serverId;
         this.term = term;
         this.success = success;
     }
