@@ -12,7 +12,7 @@ import java.nio.channels.SocketChannel;
 public class RPCUtils {
 
     // Reads a full message from a channel
-    // Does not close the channel afterwards
+    // Closes the channel afterwards
     public static Object receiveMessage(SocketChannel channel) throws IOException {
         Object message = null;
         // Create a buffer to store request data
@@ -42,12 +42,17 @@ public class RPCUtils {
         in.close();
         bis.close();
         
+        channel.close();
+        
         return message;
     }
 
-    public static void sendMessage(SocketChannel socketChannel, Object message) throws IOException {
+    public static void sendMessage(InetSocketAddress address, Object message) throws IOException {
 
-        //TODO figure how to allocate enough bytes
+        SocketChannel socketChannel = SocketChannel.open(address);
+        socketChannel.configureBlocking(false);
+        
+        //TODO figure how to allocate sufficient bytes
         ByteBuffer buffer = ByteBuffer.allocate(1024);
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         ObjectOutputStream out = null;
@@ -62,9 +67,12 @@ public class RPCUtils {
         buffer.clear();
         buffer.put(messageByteArray);
         buffer.flip();
-        // TODO Consider timeout if the receipient is down
+        // TODO Consider appropriate behavior if the recipient is down
+        // before we write the entire contents of the buffer
         while(buffer.hasRemaining()) {
             socketChannel.write(buffer);
         }
+        
+        socketChannel.close();
     }
 }
