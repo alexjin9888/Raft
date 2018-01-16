@@ -20,7 +20,7 @@ public class RPCUtils {
         ByteArrayOutputStream messageBytes = new ByteArrayOutputStream();
 
         int bytesRead = channel.read(buffer);
-        while (bytesRead != -1) {
+        while (bytesRead > 0) {
             buffer.flip();
             while(buffer.hasRemaining()) {
                 messageBytes.write(buffer.get());
@@ -44,14 +44,14 @@ public class RPCUtils {
         
         return message;
     }
-    
-    public static void sendMessage(InetSocketAddress destAddress, Object message) throws IOException {
+
+    public static void sendMessage(SocketChannel socketChannel, Object message) throws IOException {
+
         //TODO figure how to allocate enough bytes
         ByteBuffer buffer = ByteBuffer.allocate(1024);
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         ObjectOutputStream out = null;
         byte[] messageByteArray = null;
-        SocketChannel socketChannel = null;
         out = new ObjectOutputStream(bos);
         out.writeObject(message);
         out.flush();
@@ -59,14 +59,12 @@ public class RPCUtils {
         out.close();
         bos.close();
 
-        socketChannel = SocketChannel.open(destAddress);
-        socketChannel.configureBlocking(false);
         buffer.clear();
         buffer.put(messageByteArray);
         buffer.flip();
+        // TODO Consider timeout if the receipient is down
         while(buffer.hasRemaining()) {
             socketChannel.write(buffer);
         }
-        socketChannel.close();
     }
 }

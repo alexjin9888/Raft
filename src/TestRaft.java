@@ -1,6 +1,4 @@
 import java.net.InetSocketAddress;
-import java.time.Instant;
-import java.util.Date;
 
 public class TestRaft {
 
@@ -15,5 +13,4 @@ public class TestRaft {
         (new Thread(server2)).start();
         (new Thread(server3)).start();
     }
-
 }
