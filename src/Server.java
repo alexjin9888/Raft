@@ -55,7 +55,7 @@ public class Server implements Runnable {
         this.serverId = serverId;
         socketChannels = new SocketChannel[otherAddresses.length];
         messagesQueue = new ByteBuffer[otherAddresses.length];
-        role = serverId == "Server3" ? "Leader" : "Follower";
+        role = "Follower";
         // TODO initialize private states
     }
 
@@ -71,19 +71,18 @@ public class Server implements Runnable {
                 selector = Selector.open();
                 serverChannel.register(selector, SelectionKey.OP_ACCEPT);
                 // 3 While loops for different roles
-                if (role=="Follower") {
-                    followerListenAndRespond(serverChannel);
-                } else if (role == "Candidate") {
-                    while (true) {
-                        System.out.println("[" + serverId + " " + role + "]: says hi");
-                        role = "Follower";
+                switch (role) {
+                    case "Follower":
+                        followerListenAndRespond(serverChannel);
                         break;
-                    }
-                } else if (role == "Leader") {
-                    System.out.println("[" + serverId + " " + role + "]: says hi");
-                    leaderListenAndBroadcast(serverChannel);
-                } else {
-                    assert(false);
+                    case "Candidate": 
+                        candidateRunForElection(serverChannel);
+                        break;
+                    case "Leader":
+                        leaderListenAndBroadcast(serverChannel);
+                        break;
+                    default:
+                        assert(false);
                 }
                 selector.close();
             }
@@ -92,20 +91,17 @@ public class Server implements Runnable {
         }
     }
 
-    public void broadcast() {
+    public void broadcast(Object message) {
 
-        System.out.println("[" + serverId + "]: broadcasting");
+        System.out.println("[" + serverId + " " + role + "]: broadcasting");
 
         for (int i=0; i<otherAddresses.length; i++) {
             String[] entries = {};
-            AppendEntriesRequest message = new AppendEntriesRequest(1337, 0, 0, 0, entries, 0);
             try {
                 SocketChannel socketChannel = SocketChannel.open(otherAddresses[i]);
                 socketChannel.configureBlocking(false);
                 RPCUtils.sendMessage(socketChannel, message);
                 socketChannel.register(selector, SelectionKey.OP_READ);
-                // Remember to close
-                // socketChannel.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -113,7 +109,7 @@ public class Server implements Runnable {
     }
 
     private void acceptConnection(ServerSocketChannel serverChannel) throws IOException {
-        System.out.println("[" + serverId + "]: about to accept");
+        System.out.println("[" + serverId + " " + role + "]: about to accept");
         SocketChannel clientChannel = serverChannel.accept();
         clientChannel.configureBlocking(false);
         clientChannel.register(selector, SelectionKey.OP_READ);
@@ -125,7 +121,7 @@ public class Server implements Runnable {
         Date beforeSelectTime = null;
         Date curTime = null;
         boolean resetTimeout = true;
-        while (true) {
+        while (role=="Follower") {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
                 timeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
@@ -137,11 +133,10 @@ public class Server implements Runnable {
                 role = "Candidate";
                 break;
             } else {
-                System.out.println("[" + serverId + "]: about to iterate over keys");
+                System.out.println("[" + serverId + " " + role + "]: about to iterate over keys");
                 Set<SelectionKey> selectedKeys = selector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-                System.out.println("[" + serverId+ "]: has " + selectedKeys.size() + " selected keys");
 
                 while(keyIterator.hasNext()) {
 
@@ -150,26 +145,123 @@ public class Server implements Runnable {
                     if(key.isAcceptable()) {
                         acceptConnection(serverChannel);
                     } else if (key.isConnectable()) {
-                        System.out.println("[" + serverId + "]: about to connect");
+                        System.out.println("[" + serverId + " " + role + "]: about to connect");
                         // pass
                     } else if (key.isReadable()) {
-                        System.out.println("[" + serverId + "]: about to read");
+                        System.out.println("[" + serverId + " " + role + "]: about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
-                        AppendEntriesRequest request = (AppendEntriesRequest) RPCUtils.receiveMessage(channel);
-                        System.out.println("[" + serverId + "]: " + request);
-                        // TODO: if the request should reset the timeout, then set resetTimeout = true
-                        AppendEntriesReply reply = new AppendEntriesReply(-1, true);
-                        RPCUtils.sendMessage(channel, reply);
+
+                        Object message = RPCUtils.receiveMessage(channel);
+                        if (message instanceof AppendEntriesRequest) {
+                            // TODO check leader validity before accepting it (if-else)
+                            System.out.println("[" + serverId + " " + role + "]: " + message);
+                            // TODO: if the request should reset the timeout, then set resetTimeout = true
+                            AppendEntriesReply reply = new AppendEntriesReply(-1, true);
+                            RPCUtils.sendMessage(channel, reply);
+                            resetTimeout = true;
+                        } else if (message instanceof RequestVoteRequest) {
+                            System.out.println("[" + serverId + " " + role + "]: " + message);
+                            // TODO: if the request should reset the timeout, then set resetTimeout = true
+                            // TODO only vote true for the first valid request (update boolean check)
+                            RequestVoteReply reply = null;
+                            if (true) {
+                                reply = new RequestVoteReply(-1, true);
+                                resetTimeout = true;
+                            } else {
+                                reply = new RequestVoteReply(-1, false);
+                            }
+                            RPCUtils.sendMessage(channel, reply);
+                        } else {
+                            assert(false);
+                        }
                         channel.close();
-                        // TODO: write logic to send AppendEntries reply (as follower)
-                        // TODO: write logic to handle AppendEntries reply (as leader)
                     } else if (key.isWritable()) {
-                        System.out.println("[" + serverId + "]: about to write");
-                        // SocketChannel clientChannel = (SocketChannel) key.channel();
-                        // ByteBuffer messageBuffer = (ByteBuffer) key.attachment();
-                        // while(messageBuffer.hasRemaining()) {
-                        //     clientChannel.write(messageBuffer);
-                        // }
+                        System.out.println("[" + serverId + " " + role + "]: about to write");
+                    }
+
+                    keyIterator.remove();
+                }
+                if (!resetTimeout) {
+                    curTime = Date.from(Instant.now());
+                    timeout -= curTime.getTime() - beforeSelectTime.getTime();
+                    beforeSelectTime = curTime;
+                }
+            }
+        }
+    }
+
+    private void candidateRunForElection(ServerSocketChannel serverChannel) throws IOException {
+        int votesReceived = 0;
+        int readyChannels = 0;
+        long timeout = 0;
+        Date beforeSelectTime = null;
+        Date curTime = null;
+        boolean resetTimeout = true;
+        while (role=="Candidate") {
+            if(resetTimeout) {
+                beforeSelectTime = Date.from(Instant.now());
+                timeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
+                // Start Election
+                currentTerm += 1;
+                votesReceived = 1;
+                resetTimeout = false;
+                broadcast(new RequestVoteRequest(1338, 0, 0, 0));
+            }
+            System.out.println("[" + serverId + " " + role + "]: about to enter timeout");
+            readyChannels = selector.select(timeout);
+            if (readyChannels == 0) {
+                resetTimeout = true;
+            } else {
+                System.out.println("[" + serverId + " " + role + "]: about to iterate over keys");
+                Set<SelectionKey> selectedKeys = selector.selectedKeys();
+
+                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+
+                while(keyIterator.hasNext()) {
+
+                    SelectionKey key = keyIterator.next();
+
+                    if(key.isAcceptable()) {
+                        acceptConnection(serverChannel);
+                    } else if (key.isConnectable()) {
+                        System.out.println("[" + serverId + " " + role + "]: about to connect");
+                        // pass
+                    } else if (key.isReadable()) {
+                        System.out.println("[" + serverId + " " + role + "]: about to read");
+                        SocketChannel channel = (SocketChannel) key.channel();
+                        Object message = RPCUtils.receiveMessage(channel);
+                        if (message instanceof RequestVoteReply) {
+                            RequestVoteReply reply = (RequestVoteReply) message;
+                            // TODO check term number
+                            if (reply.voteGranted) {
+                                votesReceived += 1;
+                            }
+                            if (votesReceived > (otherAddresses.length+1)/2) {
+                                role = "Leader";
+                                channel.close();
+                                break;
+                            }
+                        } else if (message instanceof AppendEntriesRequest) {
+                            // TODO check leader validity before accepting it
+                            System.out.println("[" + serverId + " " + role + "]: " + message);
+                            // TODO: if the request should reset the timeout, then set resetTimeout = true
+                            AppendEntriesReply reply = new AppendEntriesReply(-1, true);
+                            RPCUtils.sendMessage(channel, reply);
+                            role = "Follower";
+                            channel.close();
+                            break;
+                        } else if (message instanceof RequestVoteRequest) {
+                            // TODO check leader validity before accepting it
+                            System.out.println("[" + serverId + " " + role + "]: " + message);
+                            // TODO: if the request should reset the timeout, then set resetTimeout = true
+                            RequestVoteReply reply = new RequestVoteReply(-1, false);
+                            RPCUtils.sendMessage(channel, reply);
+                        } else {
+                            assert(false);
+                        }
+                        channel.close();
+                    } else if (key.isWritable()) {
+                        System.out.println("[" + serverId + " " + role + "]: about to write");
                     }
 
                     keyIterator.remove();
@@ -188,24 +280,24 @@ public class Server implements Runnable {
         Date lastHeartbeatTime = null;
         Date curTime = null;
         long HEARTBEAT_INTERVAL = 1000;
-        while (true) {
+        while (role=="Leader") {
             // System.out.println("[" + serverId + " " + role + "]: about to enter timeout");
             readyChannels = selector.selectNow();
             if (readyChannels == 0) {
                 // System.out.println("[" + serverId+ "]: has " + selector.keys().size() + " keys");
                 curTime = Date.from(Instant.now());
                 if(lastHeartbeatTime==null || curTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
-                    broadcast();
+                    String[] entries = {};
+                    broadcast(new AppendEntriesRequest(1337, 0, 0, 0, entries, 0));
                     // if (lastHeartbeatTime!=null)
                     //     System.out.println(curTime.getTime()-lastHeartbeatTime.getTime());
                     lastHeartbeatTime = Date.from(Instant.now());
                 }
             } else {
-                System.out.println("[" + serverId + "]: about to iterate over keys");
+                System.out.println("[" + serverId + " " + role + "]: about to iterate over keys");
                 Set<SelectionKey> selectedKeys = selector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-                System.out.println("[" + serverId+ "]: has " + selectedKeys.size() + " selected keys");
 
                 while(keyIterator.hasNext()) {
 
@@ -214,26 +306,32 @@ public class Server implements Runnable {
                     if(key.isAcceptable()) {
                         acceptConnection(serverChannel);
                     } else if (key.isConnectable()) {
-                        System.out.println("[" + serverId + "]: about to connect");
+                        System.out.println("[" + serverId + " " + role + "]: about to connect");
                         // pass
                     } else if (key.isReadable()) {
-                        System.out.println("[" + serverId + "]: about to read");
+                        System.out.println("[" + serverId + " " + role + "]: about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
-                        AppendEntriesReply reply = (AppendEntriesReply) RPCUtils.receiveMessage(channel);
-                        System.out.println("[" + serverId + "]: " + reply);
-                        // TODO: if the reply should reset the timeout, then set resetTimeout = true
+                        Object message = RPCUtils.receiveMessage(channel);
+                        if (message instanceof AppendEntriesReply) {
+                            // TODO Project 2: write logic to handle AppendEntries message (as leader)
+                        } else if (message instanceof RequestVoteRequest) {
+                            // TODO check term
+                        } else if (message instanceof AppendEntriesRequest) {
+                            // TODO check leader validity before accepting it
+                            System.out.println("[" + serverId + " " + role + "]: " + message);
+                            // TODO: if the request should reset the timeout, then set resetTimeout = true
+                            AppendEntriesReply reply = new AppendEntriesReply(-1, true);
+                            RPCUtils.sendMessage(channel, reply);
+                            role = "Follower";
+                            channel.close();
+                            break;
+                        } else {
+                            assert(false);
+                        }
                         channel.close();
-                        // TODO: write logic to send AppendEntries reply (as follower)
-                        // TODO: write logic to handle AppendEntries reply (as leader)
                     } else if (key.isWritable()) {
-                        System.out.println("[" + serverId + "]: about to write");
-                        // SocketChannel clientChannel = (SocketChannel) key.channel();
-                        // ByteBuffer messageBuffer = (ByteBuffer) key.attachment();
-                        // while(messageBuffer.hasRemaining()) {
-                        //     clientChannel.write(messageBuffer);
-                        // }
+                        System.out.println("[" + serverId + " " + role + "]: about to write");
                     }
-
                     keyIterator.remove();
                 }
             }

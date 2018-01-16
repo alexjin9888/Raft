@@ -7,6 +7,11 @@ public class RequestVoteReply extends Message {
     @Override
     public String toString() {
         return "RequestVoteReply [term=" + term + ", voteGranted=" + voteGranted
-                + ", type=" + type + "]";
+                + "]";
+    }
+    public RequestVoteReply(int term, boolean voteGranted) {
+        super();
+        this.term = term;
+        this.voteGranted = voteGranted;
     }
 }

@@ -15,7 +15,6 @@ public class AppendEntriesRequest extends Message {
     public AppendEntriesRequest(int term, int leaderId, int prevLogIndex,
             int prevLogTerm, String[] entries, int leaderCommit) {
         super();
-        this.type = "AppendEntriesRPC";
         this.term = term;
         this.leaderId = leaderId;
         this.prevLogIndex = prevLogIndex;
@@ -28,6 +27,6 @@ public class AppendEntriesRequest extends Message {
         return "AppendEntriesRequest [term=" + term + ", leaderId=" + leaderId
                 + ", prevLogIndex=" + prevLogIndex + ", prevLogTerm="
                 + prevLogTerm + ", entries=" + Arrays.toString(entries)
-                + ", leaderCommit=" + leaderCommit + ", type=" + type + "]";
+                + ", leaderCommit=" + leaderCommit + "]";
     }
 }
