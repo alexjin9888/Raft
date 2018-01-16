@@ -31,12 +31,14 @@ public class Server implements Runnable {
     private String myId;
     private InetSocketAddress myAddress;
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
-    private String role;
+    private ROLE role;
     
     private ServerSocketChannel myListenerChannel;
     private Selector selector;
+    
+    private enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
 
-    // TODO Add detailed comments to instance variables
+    // TODO Add detailed comments for all instance variables
     // Persistent States
     private int currentTerm;
     private String votedFor;
@@ -63,7 +65,7 @@ public class Server implements Runnable {
                 this.otherServersMetadataMap.put(elemId, new ServerMetadata(elemId, elemAddress));
             }
         }
-        role = "Follower";
+        role = Server.ROLE.FOLLOWER;
 
         // Create a server to listen and respond to requests
         try {
@@ -74,7 +76,7 @@ public class Server implements Runnable {
             e.printStackTrace();
         }
         
-        // TODO initialize other private instance vars
+        // TODO initialize other instance vars
     }
 
     // Startup the server
@@ -85,13 +87,13 @@ public class Server implements Runnable {
                 myListenerChannel.register(selector, SelectionKey.OP_ACCEPT);
                 // 3 While loops for different roles
                 switch (role) {
-                    case "Follower":
+                    case FOLLOWER:
                         followerListenAndRespond();
                         break;
-                    case "Candidate": 
+                    case CANDIDATE: 
                         candidateRunForElection();
                         break;
-                    case "Leader":
+                    case LEADER:
                         leaderListenAndSendHeartbeats();
                         break;
                     default:
@@ -125,7 +127,7 @@ public class Server implements Runnable {
         clientChannel.register(selector, SelectionKey.OP_READ);
     }
 
-    // TODO: for final submission, replace this with an acceptable logging mechanism
+    // TODO for final submission, replace this with an acceptable logging mechanism
     private void logMessage(Object message) {
         System.out.println("[" + myId + " " + role + "]:" + message);
     }
@@ -136,7 +138,7 @@ public class Server implements Runnable {
         Date beforeSelectTime = null;
         Date currTime = null;
         boolean resetTimeout = true;
-        while (role=="Follower") {
+        while (role==Server.ROLE.FOLLOWER) {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
                 timeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
@@ -145,7 +147,7 @@ public class Server implements Runnable {
             logMessage("about to enter timeout");
             readyChannels = selector.select(timeout);
             if (readyChannels == 0) {
-                role = "Candidate";
+                role = Server.ROLE.CANDIDATE;
                 break;
             } else {
                 logMessage("about to iterate over keys");
@@ -168,16 +170,16 @@ public class Server implements Runnable {
 
                         Message message = (Message) RPCUtils.receiveMessage(channel);
                         if (message instanceof AppendEntriesRequest) {
-                            // TODO check leader validity before accepting it (if-else)
+                            // TODO check leader validity before accepting the request (if-else)
+                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             logMessage(message);
-                            // TODO: if the request should reset the timeout, then set resetTimeout = true
                             AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                             resetTimeout = true;
                         } else if (message instanceof RequestVoteRequest) {
                             logMessage(message);
-                            // TODO: if the request should reset the timeout, then set resetTimeout = true
                             // TODO only vote true for the first valid request (update boolean check)
+                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             RequestVoteReply reply = null;
                             if (true) {
                                 reply = new RequestVoteReply(myId, -1, true);
@@ -211,7 +213,7 @@ public class Server implements Runnable {
         Date beforeSelectTime = null;
         Date currTime = null;
         boolean resetTimeout = true;
-        while (role=="Candidate") {
+        while (role==Server.ROLE.CANDIDATE) {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
                 timeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
@@ -246,26 +248,26 @@ public class Server implements Runnable {
                         Message message = (Message) RPCUtils.receiveMessage(channel);
                         if (message instanceof RequestVoteReply) {
                             RequestVoteReply reply = (RequestVoteReply) message;
-                            // TODO check term number
+                            // TODO check term number (need if-else)
                             if (reply.voteGranted) {
                                 votesReceived += 1;
                             }
                             if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
-                                role = "Leader";
+                                role = Server.ROLE.LEADER;
                                 break;
                             }
                         } else if (message instanceof AppendEntriesRequest) {
-                            // TODO check leader validity before accepting it
+                            // TODO check leader validity before accepting it (if-else)
+                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             logMessage(message);
-                            // TODO: if the request should reset the timeout, then set resetTimeout = true
                             AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                            role = "Follower";
+                            role = Server.ROLE.FOLLOWER;
                             break;
                         } else if (message instanceof RequestVoteRequest) {
-                            // TODO check leader validity before accepting it
+                            // TODO check leader validity before accepting it (if-else)
+                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             logMessage(message);
-                            // TODO: if the request should reset the timeout, then set resetTimeout = true
                             RequestVoteReply reply = new RequestVoteReply(myId, -1, false);
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                         } else {
@@ -291,7 +293,7 @@ public class Server implements Runnable {
         Date lastHeartbeatTime = null;
         Date currTime = null;
         long HEARTBEAT_INTERVAL = 1000;
-        while (role=="Leader") {
+        while (role==Server.ROLE.LEADER) {
             readyChannels = selector.selectNow();
             if (readyChannels == 0) {
                 currTime = Date.from(Instant.now());
@@ -323,14 +325,13 @@ public class Server implements Runnable {
                         if (message instanceof AppendEntriesReply) {
                             // TODO Project 2: write logic to handle AppendEntries message (as leader)
                         } else if (message instanceof RequestVoteRequest) {
-                            // TODO check term
+                            // TODO check term (if-else)
                         } else if (message instanceof AppendEntriesRequest) {
                             // TODO check leader validity before accepting it (if-else)
                             logMessage(message);
-                            // TODO: if the request should reset the timeout, then set resetTimeout = true
                             AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                            role = "Follower";
+                            role = Server.ROLE.FOLLOWER;
                             break;
                         } else {
                             assert(false);
