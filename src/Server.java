@@ -99,7 +99,7 @@ public class Server implements Runnable {
 
     public void broadcast(Object message) {
 
-        System.out.println("[" + myId + " " + role + "]: broadcasting");
+        logMessage("broadcasting");
 
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
             String[] entries = {};
@@ -115,10 +115,15 @@ public class Server implements Runnable {
     }
 
     private void acceptConnection(ServerSocketChannel serverChannel) throws IOException {
-        System.out.println("[" + myId + " " + role + "]: about to accept");
+        logMessage("about to accept");
         SocketChannel clientChannel = serverChannel.accept();
         clientChannel.configureBlocking(false);
         clientChannel.register(selector, SelectionKey.OP_READ);
+    }
+    
+    // TODO: replace this with another logging mechanism
+    private void logMessage(Object message) {
+        System.out.println("[" + myId + " " + role + "]:" + message);
     }
 
     private void followerListenAndRespond(ServerSocketChannel serverChannel) throws IOException {
@@ -133,13 +138,13 @@ public class Server implements Runnable {
                 timeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
                 resetTimeout = false;
             }
-            System.out.println("[" + myId + " " + role + "]: about to enter timeout");
+            logMessage("about to enter timeout");
             readyChannels = selector.select(timeout);
             if (readyChannels == 0) {
                 role = "Candidate";
                 break;
             } else {
-                System.out.println("[" + myId + " " + role + "]: about to iterate over keys");
+                logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = selector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
@@ -151,22 +156,22 @@ public class Server implements Runnable {
                     if(key.isAcceptable()) {
                         acceptConnection(serverChannel);
                     } else if (key.isConnectable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to connect");
+                        logMessage("about to connect");
                         // pass
                     } else if (key.isReadable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to read");
+                        logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
 
                         Object message = RPCUtils.receiveMessage(channel);
                         if (message instanceof AppendEntriesRequest) {
                             // TODO check leader validity before accepting it (if-else)
-                            System.out.println("[" + myId + " " + role + "]: " + message);
+                            logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
                             AppendEntriesReply reply = new AppendEntriesReply(-1, true);
                             RPCUtils.sendMessage(channel, reply);
                             resetTimeout = true;
                         } else if (message instanceof RequestVoteRequest) {
-                            System.out.println("[" + myId + " " + role + "]: " + message);
+                            logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
                             // TODO only vote true for the first valid request (update boolean check)
                             RequestVoteReply reply = null;
@@ -182,7 +187,7 @@ public class Server implements Runnable {
                         }
                         channel.close();
                     } else if (key.isWritable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to write");
+                        logMessage("about to write");
                     }
 
                     keyIterator.remove();
@@ -213,12 +218,12 @@ public class Server implements Runnable {
                 resetTimeout = false;
                 broadcast(new RequestVoteRequest(1338, 0, 0, 0));
             }
-            System.out.println("[" + myId + " " + role + "]: about to enter timeout");
+            logMessage("about to enter timeout");
             readyChannels = selector.select(timeout);
             if (readyChannels == 0) {
                 resetTimeout = true;
             } else {
-                System.out.println("[" + myId + " " + role + "]: about to iterate over keys");
+                logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = selector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
@@ -230,10 +235,10 @@ public class Server implements Runnable {
                     if(key.isAcceptable()) {
                         acceptConnection(serverChannel);
                     } else if (key.isConnectable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to connect");
+                        logMessage("about to connect");
                         // pass
                     } else if (key.isReadable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to read");
+                        logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
                         Object message = RPCUtils.receiveMessage(channel);
                         if (message instanceof RequestVoteReply) {
@@ -249,7 +254,7 @@ public class Server implements Runnable {
                             }
                         } else if (message instanceof AppendEntriesRequest) {
                             // TODO check leader validity before accepting it
-                            System.out.println("[" + myId + " " + role + "]: " + message);
+                            logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
                             AppendEntriesReply reply = new AppendEntriesReply(-1, true);
                             RPCUtils.sendMessage(channel, reply);
@@ -258,7 +263,7 @@ public class Server implements Runnable {
                             break;
                         } else if (message instanceof RequestVoteRequest) {
                             // TODO check leader validity before accepting it
-                            System.out.println("[" + myId + " " + role + "]: " + message);
+                            logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
                             RequestVoteReply reply = new RequestVoteReply(-1, false);
                             RPCUtils.sendMessage(channel, reply);
@@ -267,7 +272,7 @@ public class Server implements Runnable {
                         }
                         channel.close();
                     } else if (key.isWritable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to write");
+                        logMessage("about to write");
                     }
 
                     keyIterator.remove();
@@ -287,20 +292,16 @@ public class Server implements Runnable {
         Date currTime = null;
         long HEARTBEAT_INTERVAL = 1000;
         while (role=="Leader") {
-            // System.out.println("[" + serverId + " " + role + "]: about to enter timeout");
             readyChannels = selector.selectNow();
             if (readyChannels == 0) {
-                // System.out.println("[" + serverId+ "]: has " + selector.keys().size() + " keys");
                 currTime = Date.from(Instant.now());
                 if(lastHeartbeatTime==null || currTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
                     String[] entries = {};
                     broadcast(new AppendEntriesRequest(1337, 0, 0, 0, entries, 0));
-                    // if (lastHeartbeatTime!=null)
-                    //     System.out.println(currTime.getTime()-lastHeartbeatTime.getTime());
                     lastHeartbeatTime = Date.from(Instant.now());
                 }
             } else {
-                System.out.println("[" + myId + " " + role + "]: about to iterate over keys");
+                logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = selector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
@@ -312,10 +313,10 @@ public class Server implements Runnable {
                     if(key.isAcceptable()) {
                         acceptConnection(serverChannel);
                     } else if (key.isConnectable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to connect");
+                        logMessage("about to connect");
                         // pass
                     } else if (key.isReadable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to read");
+                        logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
                         Object message = RPCUtils.receiveMessage(channel);
                         if (message instanceof AppendEntriesReply) {
@@ -324,7 +325,7 @@ public class Server implements Runnable {
                             // TODO check term
                         } else if (message instanceof AppendEntriesRequest) {
                             // TODO check leader validity before accepting it
-                            System.out.println("[" + myId + " " + role + "]: " + message);
+                            logMessage(message);
                             // TODO: if the request should reset the timeout, then set resetTimeout = true
                             AppendEntriesReply reply = new AppendEntriesReply(-1, true);
                             RPCUtils.sendMessage(channel, reply);
@@ -336,7 +337,7 @@ public class Server implements Runnable {
                         }
                         channel.close();
                     } else if (key.isWritable()) {
-                        System.out.println("[" + myId + " " + role + "]: about to write");
+                        logMessage("about to write");
                     }
                     keyIterator.remove();
                 }
