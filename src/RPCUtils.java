@@ -13,7 +13,7 @@ public class RPCUtils {
 
     // Reads a full message from a channel
     // Closes the channel afterwards
-    public static Object receiveMessage(SocketChannel channel) throws IOException {
+    public static Message receiveMessage(SocketChannel channel) throws IOException {
         Object message = null;
         // Create a buffer to store request data
         ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -44,10 +44,10 @@ public class RPCUtils {
         
         channel.close();
         
-        return message;
+        return (Message) message;
     }
 
-    public static void sendMessage(InetSocketAddress address, Object message) throws IOException {
+    public static void sendMessage(InetSocketAddress address, Message message) throws IOException {
 
         SocketChannel socketChannel = SocketChannel.open(address);
         socketChannel.configureBlocking(false);

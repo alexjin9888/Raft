@@ -106,7 +106,7 @@ public class Server implements Runnable {
         }
     }
 
-    public void broadcast(Object message) {
+    public void broadcast(Message message) {
 
         logMessage("broadcasting");
 
