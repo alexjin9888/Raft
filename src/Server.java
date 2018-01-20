@@ -23,12 +23,28 @@ import java.util.Date;
 import java.util.HashMap;
 
 /* 
- * 
- * 
- * 
- * 
- * 
- * 
+ * The Server class implements features as per the RAFT concensus protocol.
+ *  Raft defines a distributed consensus algorithm for maintaining a shared
+ *  state machine. Each Raft node maintains a complete copy of the state
+ *  machine. Cluster nodes elect a leader who collects and distributes updates
+ *  and provides for consistent reads. As long as as a node is part of a
+ *  majority, the state machine is fully operational.
+ *
+ * It has the following features:
+ *   1) leader election (project 1) and log replication (TODO project 2)
+ *   2) Dynamic membership change
+ *      a) Upon initialization, Servers switch to FOLLOWER state
+ *      b) Elections occur automatically once election timeout is hit
+ *      c) Upon successful leader election, client communications are directed
+ *         to the leader.
+ *   3) Persistent data-storage is implemented so that accidental server
+ *      failures can be restored efficiently
+ *   4) Cluster will be fully functional as long as a majority of the servers
+ *      in the cluster are running and respond promptly to RPC requests.
+ *
+ *
+ *
+ *
  */
 public class Server implements Runnable {
     // Magical constants
@@ -39,11 +55,16 @@ public class Server implements Runnable {
     public static enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
 
     // TODO Add detailed comments for all instance variables
-    private String myId;
-    private String leaderId;
-    private InetSocketAddress myAddress;
+    private String myId; // Unique identification (Id) per server
+    private String leaderId; // current leader's Id
+    private InetSocketAddress myAddress; // Unique address per server
+    // * A HashMap that maps each server (excluding myself) to its
+    // *   1) Id
+    // *   1) Address
+    // *   1) nextIndex (only applicable for leader)
+    // *   1) matchIndex (only applicable for leader)
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
-    private ROLE role;
+    private ROLE role; // my role, one of FOLLOWER, CANDIDATE, or LEADER
     
     private ServerSocketChannel myListenerChannel; // singleton
     private Selector selector;
@@ -66,10 +87,18 @@ public class Server implements Runnable {
     //   increases monotonically)
     private int lastApplied;
 
-    // Debug var
-    Date startTime;
+    // Tracing and debugging logger
+    // see: https://logging.apache.org/log4j/2.0/manual/api.html
     private static final Logger myLogger = LogManager.getLogger(Server.class);
 
+    // Initialize a server with its Id and a HashMap between servers and their
+    // meta-data.
+    // Upon initialization, we do 4 things:
+    //   1) store our own information in our class, and turn other servers'
+    //      meta-data into a new HashMap and store a reference to it.
+    //   2) change our role to FOLLOWER.
+    //   3) create a socket for all incoming communications
+    //   4) initialize and load (TODO project 2) variables
     public Server(String serverId, HashMap<String, InetSocketAddress> serverAddressesMap) {
         this.leaderId = null;
         this.myId = serverId;
@@ -109,6 +138,7 @@ public class Server implements Runnable {
     }
 
     // Startup the server
+    // Essentially a while loop that calls different methods based on our role
     public void run() {
         try {
             while(true) {
@@ -135,7 +165,8 @@ public class Server implements Runnable {
         }
     }
 
-    public void broadcast(Message message) {
+    // Helper function to send message to all other servers (excluding me)
+    private void broadcast(Message message) {
 
         logMessage("broadcasting");
 

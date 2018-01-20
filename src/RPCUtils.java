@@ -12,10 +12,12 @@ import java.nio.channels.SocketChannel;
 // TODO figure how to determine sufficient # of bytes to allocate for all byte buffers
 // TODO think about this: what happens if the sender goes down before we read the
 //        entire message object?
+// TODO Consider appropriate behavior if the recipient goes down
+//   before we write out the entire contents of the buffer
 public class RPCUtils {
 
     // Reads a full message from a channel
-    // Closes the channel afterwards
+    // Closes the channel afterwards and returns the received message
     public static Message receiveMessage(SocketChannel channel) throws IOException {
         Object message = null;
         // Create a buffer to store request data
@@ -50,6 +52,8 @@ public class RPCUtils {
         return (Message) message;
     }
 
+    // Sends a full message from a channel
+    // Closes the channel afterwards
     public static void sendMessage(InetSocketAddress address, Message message) throws IOException {
 
         SocketChannel socketChannel = SocketChannel.open(address);
@@ -69,8 +73,6 @@ public class RPCUtils {
         buffer.clear();
         buffer.put(messageByteArray);
         buffer.flip();
-        // TODO Consider appropriate behavior if the recipient goes down
-        //   before we write out the entire contents of the buffer
         while(buffer.hasRemaining()) {
             socketChannel.write(buffer);
         }
