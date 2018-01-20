@@ -1,3 +1,7 @@
+/*
+ * Each instance of LogEntry class corresponds to a log.
+ * (TODO project 2) implement command
+ */
 public class LogEntry {
     String command;
     int term;

@@ -180,6 +180,8 @@ public class Server implements Runnable {
         }
     }
 
+    // Helper function to accept an incoming connection in non-blocking mode
+    // We then get ready to read the incoming message
     private void acceptConnection() throws IOException {
         logMessage("about to accept");
         SocketChannel clientChannel = myListenerChannel.accept();
@@ -187,7 +189,7 @@ public class Server implements Runnable {
         clientChannel.register(selector, SelectionKey.OP_READ);
     }
 
-    // TODO for final submission, replace this with an acceptable logging mechanism (e.g., log4j2)
+    // Helper logger that logs to a log4j2 logger instance
     private void logMessage(Object message) {
         myLogger.info(myId + " :: " + role + " :: " + message);
     }
@@ -201,7 +203,7 @@ public class Server implements Runnable {
         }
     }
 
-    // Checks if we grant the sender our vote
+    // Checks if we grant the sender our vote ($5.2 Leader election)
     private boolean grantVote(RequestVoteRequest message, boolean senderTermStale) {
         if (senderTermStale) {
             return false;
@@ -224,6 +226,7 @@ public class Server implements Runnable {
         }
     }
 
+    // Processes an AppendEntries RPC from leader ($5.3 Log replication)
     // If conflicts exist, we delete our record up to the conflicting one
     // Otherwise add new entries to our log
     // Update commitIndex when necessary
@@ -257,6 +260,8 @@ public class Server implements Runnable {
         }
     }
 
+    // Called by the leader to determine if we should update the commitIndex
+    // ($5.3, $5.4)
     private boolean testMajorityN(int candidateN) {
         if (candidateN<=this.commitIndex) {
             return false;
@@ -279,6 +284,10 @@ public class Server implements Runnable {
         return true;
     }
 
+    // Follower does the following 2 tasks:
+    //   1) Respond to RPCs from candidates and leaders
+    //   2) If election timeout elapses without receiving AppendEntries RPC from
+    //      current leader or granting vote to candidate: convert to candidate
     private void followerListenAndRespond() throws IOException {
         int readyChannels = 0;
         long electionTimeout = 0;
@@ -349,6 +358,15 @@ public class Server implements Runnable {
         }
     }
 
+    // Candidate does the following 4 tasks:
+    //   1) On conversion to candidate, start election:
+    //      a) Increment currentTerm
+    //      b) Vote for self
+    //      c) Reset election timer
+    //      d) Send RequestVote RPCs to all other servers
+    //   2) If votes received from majority of servers: become leader
+    //   3) If AppendEntries RPC received from new leader: convert to follower
+    //   4) If election timeout elapses: start new election
     private void candidateRunForElection() throws IOException {
         int readyChannels = 0;
         int votesReceived = 0;
@@ -445,6 +463,20 @@ public class Server implements Runnable {
         }
     }
 
+    // Candidate does the following 4 tasks:
+    // 1) Upon election: send initial empty AppendEntries RPCs (heartbeat) to
+    //    each server; repeat during idle periods to prevent election timeouts
+    //    (§5.2)
+    // 2) If command received from client: append entry to local log, respond
+    //    after entry applied to state machine (§5.3) 
+    // 3) If last log index ≥ nextIndex for a follower: send AppendEntries RPC
+    //    with log entries starting at nextIndex
+    //    a) If successful: update nextIndex and matchIndex for follower (§5.3)
+    //    b) If AppendEntries fails because of log inconsistency: decrement
+    //       nextIndex and retry (§5.3)
+    // 4) If there exists an N such that N > commitIndex, a majority of
+    //    matchIndex[i] ≥ N, and log[N].term == currentTerm:
+    //    set commitIndex = N (§5.3, §5.4).
     private void leaderSendHeartbeatsAndListen() throws IOException {
         // initialize volatile state on leaders
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
