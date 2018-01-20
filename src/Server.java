@@ -48,11 +48,11 @@ import java.util.HashMap;
  */
 public class Server implements Runnable {
     // Magical constants
-    public static final int HEARTBEAT_INTERVAL = 400;
-    public static final int MIN_ELECTION_TIMEOUT = 1500;
-    public static final int MAX_ELECTION_TIMEOUT = 3000;
+    private static final int HEARTBEAT_INTERVAL = 400;
+    private static final int MIN_ELECTION_TIMEOUT = 1500;
+    private static final int MAX_ELECTION_TIMEOUT = 3000;
     
-    public static enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
+    private static enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
 
     // TODO Add detailed comments for all instance variables
     private String myId; // Unique identification (Id) per server
@@ -133,7 +133,6 @@ public class Server implements Runnable {
         this.lastApplied = -1;
 
         // Debug
-        startTime = Date.from(Instant.now());
         myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
     }
 

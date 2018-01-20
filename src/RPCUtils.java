@@ -16,6 +16,9 @@ import java.nio.channels.SocketChannel;
 //   before we write out the entire contents of the buffer
 public class RPCUtils {
 
+    // size of buffer for reading/writing from/to a server (in bytes)
+    private static final int BUFFER_SIZE = 1024;
+
     // Reads a full message from a channel
     // Closes the channel afterwards and returns the received message
     public static Message receiveMessage(SocketChannel channel) throws IOException {

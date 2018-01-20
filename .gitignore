@@ -18,6 +18,9 @@
 *.tar.gz
 *.rar
 
+!apache-log4j-2.10.0-bin/log4j-api-2.10.0.jar
+!apache-log4j-2.10.0-bin/log4j-core-2.10.0.jar
+
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 /bin/
