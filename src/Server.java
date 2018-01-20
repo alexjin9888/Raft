@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -30,10 +29,10 @@ import java.util.HashMap;
  */
 public class Server implements Runnable {
 
+    // TODO Add detailed comments for all instance variables
     private String myId;
     private String leaderId;
     private InetSocketAddress myAddress;
-    // TODO(Don): comment this
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
     private enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
     private ROLE role;
@@ -41,7 +40,6 @@ public class Server implements Runnable {
     private ServerSocketChannel myListenerChannel; // singleton
     private Selector selector;
 
-    // TODO Add detailed comments for all instance variables
     // Persistent State
     // * Latest term server has seen (initialized to 0 on first boot, increases
     //   monotonically)
@@ -88,7 +86,7 @@ public class Server implements Runnable {
             e.printStackTrace();
         }
 
-        // TODO load in Persistent state if present
+        // TODO Conditionally load in persistent state if present
         this.currentTerm = 0;
         this.votedFor = null;
         this.log = new ArrayList<LogEntry>();
@@ -148,7 +146,7 @@ public class Server implements Runnable {
         clientChannel.register(selector, SelectionKey.OP_READ);
     }
 
-    // TODO for final submission, replace this with an acceptable logging mechanism
+    // TODO for final submission, replace this with an acceptable logging mechanism (e.g., log4j2)
     private void logMessage(Object message) {
         System.out.println("[" + myId + " " + (Date.from(Instant.now()).getTime() - startTime.getTime()) + " " + role + "]:" + message);
     }
@@ -167,14 +165,13 @@ public class Server implements Runnable {
         if (senderTermStale) {
             return false;
         } else {
-            // TODO: why do we check this.votedFor == message.serverId?
             if (this.votedFor == null || this.votedFor == message.serverId) {
                 int lastLogIndex = this.log.size() - 1;
                 int lastLogTerm = lastLogIndex < 0 ? -1 : this.log.get(lastLogIndex).term;
-                // TODO make sure that this logic is correct for checking that a candidate's
-                // log is at least as up-to-date as ours. Test this afterwards
+                // Proj2: make sure that this logic is correct for checking that a candidate's
+                // log is at least as up-to-date as ours. Test this logic afterwards
                 if (message.lastLogIndex >= lastLogIndex && message.lastLogTerm >= lastLogTerm) {
-                    assert(!senderTermStale)
+                    assert(!senderTermStale);
                     this.votedFor = message.serverId;
                     return true;
                 } else {
@@ -195,19 +192,19 @@ public class Server implements Runnable {
             return false;
         } else {
             this.leaderId = message.serverId;
-            // TODO (project 2) test this code
+            // Proj2: test this code
             if (message.prevLogIndex >= 0 && message.prevLogIndex < this.log.size()) {
-                // TODO (project 2) check prevLogTerm
+                // Proj2: check prevLogTerm
                 if (this.log.get(message.prevLogIndex).term != message.prevLogTerm) {
                     this.log = this.log.subList(0, message.prevLogIndex);
                     return false;
                 } else {
-                    // TODO (project 2) is this okay to add log entry unconditionally?
-                    // explore whether this check is necessary
+                    // Proj2: is this okay to add log entry unconditionally?
+                    // Otherwise, check whether this if cond. is necessary
                     if (!this.log.contains(message.entry)) {
                         this.log.add(message.entry);
                     }
-                    // TODO (project 2) Consider doing All servers 1/2 here
+                    // Proj2: Consider implementing Figure 2, All servers, bullet point 1/2 here
                     if (message.leaderCommit > this.commitIndex) {
                         this.commitIndex = Math.min(message.leaderCommit, this.log.size() - 1);
                     }
@@ -223,7 +220,7 @@ public class Server implements Runnable {
         if (candidateN<=this.commitIndex) {
             return false;
         }
-        // TODO ask ousterhout what we should name count
+        // TODO ask ousterhout about a better name for count
         // count is the # of servers with at least candidateN log entries
         // We include the leader in the count because its log index is >= candidateN
         int count = 1;
@@ -432,7 +429,7 @@ public class Server implements Runnable {
                     lastHeartbeatTime = Date.from(Instant.now());
                 }
                 // send regular heartbeat messages with log entries after a heartbeat interval has passed
-                // TODO (project 2): add log entries as argument into AppendEntriesRequest
+                // Proj2: add proper log entry (if needed) as argument into AppendEntriesRequest
                 if(currTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
                     broadcast(new AppendEntriesRequest(myId, this.currentTerm, -1, -1, null, this.commitIndex));
                     lastHeartbeatTime = Date.from(Instant.now());
@@ -460,7 +457,7 @@ public class Server implements Runnable {
                         boolean myTermStale = message.term > this.currentTerm;
                         processMessageTerm(message);
                         if (message instanceof AppendEntriesReply) {
-                            // TODO Project 2: write logic to handle AppendEntries message (as leader)
+                            // Proj2: write logic to handle AppendEntries message (as leader)
                             AppendEntriesReply reply = (AppendEntriesReply) message;
                             ServerMetadata meta = this.otherServersMetadataMap.get(reply.serverId);
                             if (reply.success) {
