@@ -172,7 +172,7 @@ public class Server implements Runnable {
                 int lastLogIndex = this.log.size() - 1;
                 int lastLogTerm = lastLogIndex < 0 ? -1 : this.log.get(lastLogIndex).term;
                 // TODO make sure that this logic is correct for checking that a candidate's
-                // log is at least as up-to-date as ours
+                // log is at least as up-to-date as ours. Test this afterwards
                 if (message.lastLogIndex >= lastLogIndex && message.lastLogTerm >= lastLogTerm) {
                     this.votedFor = message.serverId;
                     return true;
@@ -242,18 +242,18 @@ public class Server implements Runnable {
 
     private void followerListenAndRespond() throws IOException {
         int readyChannels = 0;
-        long timeout = 0;
+        long electionTimeout = 0;
         Date beforeSelectTime = null;
         Date currTime = null;
         boolean resetTimeout = true;
         while (role==Server.ROLE.FOLLOWER) {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
-                timeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
+                electionTimeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
                 resetTimeout = false;
             }
             logMessage("about to enter timeout");
-            readyChannels = selector.select(timeout);
+            readyChannels = selector.select(electionTimeout);
             if (readyChannels == 0) {
                 role = Server.ROLE.CANDIDATE;
                 break;
@@ -305,7 +305,7 @@ public class Server implements Runnable {
                 }
                 if (!resetTimeout) {
                     currTime = Date.from(Instant.now());
-                    timeout -= currTime.getTime() - beforeSelectTime.getTime();
+                    electionTimeout -= currTime.getTime() - beforeSelectTime.getTime();
                     beforeSelectTime = currTime;
                 }
             }
@@ -315,14 +315,14 @@ public class Server implements Runnable {
     private void candidateRunForElection() throws IOException {
         int readyChannels = 0;
         int votesReceived = 0;
-        long timeout = 0;
+        long electionTimeout = 0;
         Date beforeSelectTime = null;
         Date currTime = null;
         boolean resetTimeout = true;
         while (role==Server.ROLE.CANDIDATE) {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
-                timeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
+                electionTimeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
                 // Start Election
                 currentTerm += 1;
                 votesReceived = 1;
@@ -335,7 +335,7 @@ public class Server implements Runnable {
                 broadcast(new RequestVoteRequest(myId, currentTerm, lastLogIndex, lastLogTerm));
             }
             logMessage("about to enter timeout");
-            readyChannels = selector.select(timeout);
+            readyChannels = selector.select(electionTimeout);
             if (readyChannels == 0) {
                 resetTimeout = true;
             } else {
@@ -397,7 +397,7 @@ public class Server implements Runnable {
                 }
                 if (!resetTimeout) {
                     currTime = Date.from(Instant.now());
-                    timeout -= currTime.getTime() - beforeSelectTime.getTime();
+                    electionTimeout -= currTime.getTime() - beforeSelectTime.getTime();
                     beforeSelectTime = currTime;
                 }
             }
