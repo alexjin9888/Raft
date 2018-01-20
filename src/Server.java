@@ -9,9 +9,11 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.time.Instant;
@@ -29,30 +31,40 @@ import java.util.HashMap;
 public class Server implements Runnable {
 
     private String myId;
+    private String leaderId;
     private InetSocketAddress myAddress;
+    // TODO(Don): comment this
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
+    private enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
     private ROLE role;
     
-    private ServerSocketChannel myListenerChannel;
+    private ServerSocketChannel myListenerChannel; // singleton
     private Selector selector;
-    
-    private enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
 
     // TODO Add detailed comments for all instance variables
-    // Persistent States
+    // Persistent State
+    // * Latest term server has seen (initialized to 0 on first boot, increases
+    //   monotonically)
     private int currentTerm;
+    // * candidateId that received vote in current term (or null if none)
     private String votedFor;
-    private String[] log;
+    // * log entries; each entry contains command for state machine, and term
+    //   when entry was received by leader (first index is 0)
+    private List<LogEntry> log;
 
-    // Volatile States on all servers
+    // Volatile State on all servers
+    // * index of highest log entry known to be committed (initialized to 0,
+    //   increases monotonically)
     private int commitIndex;
+    // * index of highest log entry applied to state machine (initialized to 0,
+    //   increases monotonically)
     private int lastApplied;
 
-    // Volatile States on leaders
-    private int[] nextIndex;
-    private int[] matchIndex;
+    // Debug var
+    Date startTime;
 
     public Server(String serverId, HashMap<String, InetSocketAddress> serverAddressesMap) {
+        this.leaderId = null;
         this.myId = serverId;
         this.otherServersMetadataMap = new HashMap<String, ServerMetadata>();
         for (HashMap.Entry<String, InetSocketAddress> entry : serverAddressesMap.entrySet()) {
@@ -75,8 +87,17 @@ public class Server implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        
-        // TODO initialize other instance vars
+
+        // TODO load in Persistent state if present
+        this.currentTerm = 0;
+        this.votedFor = null;
+        this.log = new ArrayList<LogEntry>();
+
+        this.commitIndex = -1;
+        this.lastApplied = -1;
+
+        // Debug
+        startTime = Date.from(Instant.now());
     }
 
     // Startup the server
@@ -129,7 +150,94 @@ public class Server implements Runnable {
 
     // TODO for final submission, replace this with an acceptable logging mechanism
     private void logMessage(Object message) {
-        System.out.println("[" + myId + " " + role + "]:" + message);
+        System.out.println("[" + myId + " " + (Date.from(Instant.now()).getTime() - startTime.getTime()) + " " + role + "]:" + message);
+    }
+
+    // Compares the sender's term against ours
+    // Does a term update when necessary
+    private void processMessageTerm(Message message) {
+        if (message.term > this.currentTerm) {
+            this.votedFor = null;
+            this.currentTerm = message.term;
+        }
+    }
+
+    // Checks if we grant the sender our vote
+    private boolean grantVote(RequestVoteRequest message, boolean termObsolete) {
+        if (termObsolete) {
+            return false;
+        } else {
+            // TODO: why do we check this.votedFor == message.serverId?
+            if (this.votedFor == null || this.votedFor == message.serverId) {
+                int lastLogIndex = this.log.size() - 1;
+                int lastLogTerm = lastLogIndex < 0 ? -1 : this.log.get(lastLogIndex).term;
+                // TODO make sure that this logic is correct for checking that a candidate's
+                // log is at least as up-to-date as ours
+                if (message.lastLogIndex >= lastLogIndex && message.lastLogTerm >= lastLogTerm) {
+                    this.votedFor = message.serverId;
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+
+    // If conflicts exist, we delete our record up to the conflicting one
+    // Otherwise add new entries to our log
+    // Update commitIndex when necessary
+    // Returns whether follower contained entry matching prevLogIndex and prevLogTerm
+    private boolean processAppendEntriesRequest(AppendEntriesRequest message, boolean termObsolete) {
+        if (termObsolete) {
+            return false;
+        } else {
+            this.leaderId = message.serverId;
+            // TODO (project 2) test this code
+            if (message.prevLogIndex >= 0 && message.prevLogIndex < this.log.size()) {
+                // TODO (project 2) check prevLogTerm
+                if (this.log.get(message.prevLogIndex).term != message.prevLogTerm) {
+                    this.log = this.log.subList(0, message.prevLogIndex);
+                    return false;
+                } else {
+                    // TODO (project 2) is this okay to add log entry unconditionally?
+                    // explore whether this check is necessary
+                    if (!this.log.contains(message.entry)) {
+                        this.log.add(message.entry);
+                    }
+                    // TODO (project 2) Consider doing All servers 1/2 here
+                    if (message.leaderCommit > this.commitIndex) {
+                        this.commitIndex = Math.min(message.leaderCommit, this.log.size() - 1);
+                    }
+                    return true;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+
+    private boolean testMajorityN(int candidateN) {
+        if (candidateN<=this.commitIndex) {
+            return false;
+        }
+        // TODO ask ousterhout what we should name count
+        // count is the # of servers with at least candidateN log entries
+        // We include the leader in the count because its log index is >= candidateN
+        int count = 1;
+        for (ServerMetadata meta : otherServersMetadataMap.values()) {
+            if (meta.matchIndex >= candidateN) {
+                count += 1;
+            }
+        }
+        if (count <= otherServersMetadataMap.size() / 2) {
+            return false;
+        }
+        if (this.log.get(candidateN).term != currentTerm) {
+            return false;
+        }
+        return true;
     }
 
     private void followerListenAndRespond() throws IOException {
@@ -169,24 +277,22 @@ public class Server implements Runnable {
                         SocketChannel channel = (SocketChannel) key.channel();
 
                         Message message = (Message) RPCUtils.receiveMessage(channel);
+                        boolean termObsolete = message.term < this.currentTerm;
+                        processMessageTerm(message);
                         if (message instanceof AppendEntriesRequest) {
-                            // TODO check leader validity before accepting the request (if-else)
-                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             logMessage(message);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
+                            logMessage("ob "+termObsolete);
+                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, termObsolete));
+                            resetTimeout = !termObsolete;
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                            resetTimeout = true;
                         } else if (message instanceof RequestVoteRequest) {
                             logMessage(message);
-                            // TODO only vote true for the first valid request (update boolean check)
-                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             RequestVoteReply reply = null;
-                            if (true) {
-                                reply = new RequestVoteReply(myId, -1, true);
-                                resetTimeout = true;
-                            } else {
-                                reply = new RequestVoteReply(myId, -1, false);
-                            }
+                            boolean grantingVote = grantVote((RequestVoteRequest) message, termObsolete);
+                            logMessage("vt "+grantingVote);
+
+                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
+                            resetTimeout = grantingVote;
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                         } else {
                             assert(false);
@@ -220,8 +326,13 @@ public class Server implements Runnable {
                 // Start Election
                 currentTerm += 1;
                 votesReceived = 1;
+                this.votedFor = myId;
                 resetTimeout = false;
-                broadcast(new RequestVoteRequest(myId, 1338, 0, 0, 0));
+                int lastLogIndex = this.log.size()-1;
+                // lastLogTerm = -1 means there are no log entries
+                int lastLogTerm = lastLogIndex < 0 ?
+                                  -1 : this.log.get(lastLogIndex).term;
+                broadcast(new RequestVoteRequest(myId, currentTerm, lastLogIndex, lastLogTerm));
             }
             logMessage("about to enter timeout");
             readyChannels = selector.select(timeout);
@@ -246,9 +357,10 @@ public class Server implements Runnable {
                         logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
                         Message message = (Message) RPCUtils.receiveMessage(channel);
+                        boolean termObsolete = message.term < this.currentTerm;
+                        processMessageTerm(message);
                         if (message instanceof RequestVoteReply) {
                             RequestVoteReply reply = (RequestVoteReply) message;
-                            // TODO check term number (need if-else)
                             if (reply.voteGranted) {
                                 votesReceived += 1;
                             }
@@ -257,21 +369,25 @@ public class Server implements Runnable {
                                 break;
                             }
                         } else if (message instanceof AppendEntriesRequest) {
-                            // TODO check leader validity before accepting it (if-else)
-                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             logMessage(message);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
+                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, termObsolete));
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                            role = Server.ROLE.FOLLOWER;
-                            break;
                         } else if (message instanceof RequestVoteRequest) {
-                            // TODO check leader validity before accepting it (if-else)
-                            // TODO if the request should reset the timeout, then set resetTimeout = true
                             logMessage(message);
-                            RequestVoteReply reply = new RequestVoteReply(myId, -1, false);
+                            RequestVoteReply reply = null;
+                            boolean grantingVote = grantVote((RequestVoteRequest) message, termObsolete);
+
+                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
+                            if (grantingVote) {
+                                assert(termObsolete);
+                            }
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                         } else {
                             assert(false);
+                        }
+                        if (termObsolete) {
+                            role = Server.ROLE.FOLLOWER;
+                            break;
                         }
                     } else if (key.isWritable()) {
                         logMessage("about to write");
@@ -289,17 +405,30 @@ public class Server implements Runnable {
     }
 
     private void leaderListenAndSendHeartbeats() throws IOException {
+        // initialize volatile state on leaders
+        for (ServerMetadata meta : otherServersMetadataMap.values()) {
+            // Subtracting 1 makes it apparent that we want to send the entry
+            // corresponding to the next available index
+            meta.nextIndex = (this.log.size() - 1) + 1;
+            meta.matchIndex = -1;
+        }
         int readyChannels = 0;
         Date lastHeartbeatTime = null;
         Date currTime = null;
-        long HEARTBEAT_INTERVAL = 1000;
+        long HEARTBEAT_INTERVAL = 400;
         while (role==Server.ROLE.LEADER) {
             readyChannels = selector.selectNow();
             if (readyChannels == 0) {
                 currTime = Date.from(Instant.now());
-                if(lastHeartbeatTime==null || currTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
-                    String[] entries = {};
-                    broadcast(new AppendEntriesRequest(myId, 1337, 0, 0, 0, entries, 0));
+                // null check allows us to send initial empty AppendEntriesRPCs upon election
+                if(lastHeartbeatTime==null) {
+                    broadcast(new AppendEntriesRequest(myId, this.currentTerm, -1, -1, null, this.commitIndex));
+                    lastHeartbeatTime = Date.from(Instant.now());
+                }
+                // send regular heartbeat messages with log entries after a heartbeat interval has passed
+                // TODO (project 2): add log entries
+                if(currTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
+                    broadcast(new AppendEntriesRequest(myId, this.currentTerm, -1, -1, null, this.commitIndex));
                     lastHeartbeatTime = Date.from(Instant.now());
                 }
             } else {
@@ -321,20 +450,38 @@ public class Server implements Runnable {
                         logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
                         Message message = (Message) RPCUtils.receiveMessage(channel);
-                        
+                        boolean termObsolete = message.term < this.currentTerm;
+                        processMessageTerm(message);
                         if (message instanceof AppendEntriesReply) {
                             // TODO Project 2: write logic to handle AppendEntries message (as leader)
+                            AppendEntriesReply reply = (AppendEntriesReply) message;
+                            ServerMetadata meta = this.otherServersMetadataMap.get(reply.serverId);
+                            if (reply.success) {
+                                meta.matchIndex = meta.nextIndex;
+                                meta.nextIndex += 1;
+                                if (testMajorityN(meta.matchIndex)) {
+                                    this.commitIndex = meta.matchIndex;
+                                }
+                            } else {
+                                meta.nextIndex -= 1;
+                            }
                         } else if (message instanceof RequestVoteRequest) {
-                            // TODO check term (if-else)
-                        } else if (message instanceof AppendEntriesRequest) {
-                            // TODO check leader validity before accepting it (if-else)
                             logMessage(message);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, -1, true);
+                            RequestVoteReply reply = null;
+                            boolean grantingVote = grantVote((RequestVoteRequest) message, termObsolete);
+
+                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                            role = Server.ROLE.FOLLOWER;
-                            break;
+                        } else if (message instanceof AppendEntriesRequest) {
+                            logMessage(message);
+                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, termObsolete));
+                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                         } else {
                             assert(false);
+                        }
+                        if (termObsolete) {
+                            role = Server.ROLE.FOLLOWER;
+                            break;
                         }
                     } else if (key.isWritable()) {
                         logMessage("about to write");

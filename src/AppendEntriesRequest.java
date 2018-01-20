@@ -5,29 +5,26 @@ import java.util.Arrays;
  * heartbeat ($5.2).
  */
 public class AppendEntriesRequest extends Message {
-    int term;           // leader's term
-    int leaderId;       // so follower can redirect clients
-    int prevLogIndex;   // index of log entry immediately preceding new ones
-    int prevLogTerm;    // term of prevLogIndex entry
-    String[] entries;   // log entries to store (empty for heartbeat;
-                        // may send more than one for efficiency)
-    int leaderCommit;   //leader's commitIndex
-    public AppendEntriesRequest(String serverId, int term, int leaderId, int prevLogIndex,
-            int prevLogTerm, String[] entries, int leaderCommit) {
+    int prevLogIndex; // index of log entry immediately preceding new ones
+    int prevLogTerm;  // term of prevLogIndex entry
+    LogEntry entry;   // log entries to store (empty for heartbeat;
+                      // may send more than one for efficiency)
+    int leaderCommit; //leader's commitIndex
+    public AppendEntriesRequest(String serverId, int term, int prevLogIndex,
+        int prevLogTerm, LogEntry entry, int leaderCommit) {
         super();
         this.serverId = serverId;
         this.term = term;
-        this.leaderId = leaderId;
         this.prevLogIndex = prevLogIndex;
         this.prevLogTerm = prevLogTerm;
-        this.entries = entries;
+        this.entry = entry;
         this.leaderCommit = leaderCommit;
     }
     @Override
     public String toString() {
-        return "AppendEntriesRequest [term=" + term + ", leaderId=" + leaderId
+        return "AppendEntriesRequest [term=" + term + ", serverId=" + serverId
                 + ", prevLogIndex=" + prevLogIndex + ", prevLogTerm="
-                + prevLogTerm + ", entries=" + Arrays.toString(entries)
+                + prevLogTerm + ", entry=" + entry
                 + ", leaderCommit=" + leaderCommit + "]";
     }
 }
