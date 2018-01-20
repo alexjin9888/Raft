@@ -15,6 +15,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
@@ -28,13 +31,18 @@ import java.util.HashMap;
  * 
  */
 public class Server implements Runnable {
+    // Magical constants
+    public static final int HEARTBEAT_INTERVAL = 400;
+    public static final int MIN_ELECTION_TIMEOUT = 1500;
+    public static final int MAX_ELECTION_TIMEOUT = 3000;
+    
+    public static enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
 
     // TODO Add detailed comments for all instance variables
     private String myId;
     private String leaderId;
     private InetSocketAddress myAddress;
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
-    private enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
     private ROLE role;
     
     private ServerSocketChannel myListenerChannel; // singleton
@@ -60,6 +68,7 @@ public class Server implements Runnable {
 
     // Debug var
     Date startTime;
+    private static final Logger myLogger = LogManager.getLogger(Server.class);
 
     public Server(String serverId, HashMap<String, InetSocketAddress> serverAddressesMap) {
         this.leaderId = null;
@@ -75,7 +84,7 @@ public class Server implements Runnable {
                 this.otherServersMetadataMap.put(elemId, new ServerMetadata(elemId, elemAddress));
             }
         }
-        role = Server.ROLE.FOLLOWER;
+        role = ROLE.FOLLOWER;
 
         // Create a server to listen and respond to requests
         try {
@@ -96,6 +105,7 @@ public class Server implements Runnable {
 
         // Debug
         startTime = Date.from(Instant.now());
+        myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
     }
 
     // Startup the server
@@ -148,7 +158,7 @@ public class Server implements Runnable {
 
     // TODO for final submission, replace this with an acceptable logging mechanism (e.g., log4j2)
     private void logMessage(Object message) {
-        System.out.println("[" + myId + " " + (Date.from(Instant.now()).getTime() - startTime.getTime()) + " " + role + "]:" + message);
+        myLogger.info(myId + " :: " + role + " :: " + message);
     }
 
     // Compares the sender's term against ours
@@ -247,7 +257,7 @@ public class Server implements Runnable {
         while (role==Server.ROLE.FOLLOWER) {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
-                electionTimeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
+                electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
                 resetTimeout = false;
             }
             logMessage("about to enter timeout");
@@ -318,7 +328,7 @@ public class Server implements Runnable {
         while (role==Server.ROLE.CANDIDATE) {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
-                electionTimeout = ThreadLocalRandom.current().nextInt(1500, 3000 + 1);
+                electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
                 // Start Election
                 currentTerm += 1;
                 votesReceived = 1;
@@ -415,7 +425,6 @@ public class Server implements Runnable {
         int readyChannels = 0;
         Date lastHeartbeatTime = null;
         Date currTime = null;
-        long HEARTBEAT_INTERVAL = 400;
         while (role==Server.ROLE.LEADER) {
             readyChannels = selector.selectNow();
             if (readyChannels == 0) {
