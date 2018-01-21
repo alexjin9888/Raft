@@ -289,9 +289,7 @@ public class Server implements Runnable {
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
                 while(keyIterator.hasNext()) {
-
                     SelectionKey key = keyIterator.next();
-
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
                     Message message = (Message) RPCUtils.receiveMessage(channel, true);
@@ -313,7 +311,6 @@ public class Server implements Runnable {
                     } else {
                         assert(false);
                     }
-
                     keyIterator.remove();
                 }
             }
@@ -366,9 +363,7 @@ public class Server implements Runnable {
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
                 while(keyIterator.hasNext()) {
-
                     SelectionKey key = keyIterator.next();
-
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
                     Message message = (Message) RPCUtils.receiveMessage(channel, true);
@@ -409,7 +404,6 @@ public class Server implements Runnable {
                         role = Server.ROLE.FOLLOWER;
                         break;
                     }
-
                     keyIterator.remove();
                 }
             }
@@ -469,9 +463,7 @@ public class Server implements Runnable {
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
                 while(keyIterator.hasNext()) {
-
                     SelectionKey key = keyIterator.next();
-
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
                     Message message = (Message) RPCUtils.receiveMessage(channel, true);

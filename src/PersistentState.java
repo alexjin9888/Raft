@@ -56,20 +56,9 @@ public class PersistentState implements Serializable {
     // Load from file the persistent state of this server
     //  * invariant: the file with persistent state exists
     public void load() throws IOException {
-        byte[] stateByteArray = Files.readAllBytes(Paths.get(BASE_LOG_DIR, myId + LOG_EXT));
+        byte[] persistentStateBytes = Files.readAllBytes(Paths.get(BASE_LOG_DIR, myId + LOG_EXT));
 
-        PersistentState loadedPersistentState = null;
-        ByteArrayInputStream bis = new ByteArrayInputStream(stateByteArray);
-
-        ObjectInputStream in = new ObjectInputStream(bis);
-        try {
-            loadedPersistentState = (PersistentState) in.readObject();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-
-        in.close();
-        bis.close();
+        PersistentState loadedPersistentState = (PersistentState) ObjectUtils.deserializeObject(persistentStateBytes);
         this.currentTerm = loadedPersistentState.currentTerm;
         this.votedFor = loadedPersistentState.votedFor;
         this.log = loadedPersistentState.log;
@@ -77,16 +66,6 @@ public class PersistentState implements Serializable {
 
     // Writes to file the current persistent state of this server
     public void save() throws IOException {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        ObjectOutputStream out = null;
-        byte[] stateByteArray = null;
-        out = new ObjectOutputStream(bos);
-        out.writeObject(this);
-        out.flush();
-        stateByteArray = bos.toByteArray();
-        out.close();
-        bos.close();
-
-        Files.write(Paths.get(BASE_LOG_DIR, myId + LOG_EXT), stateByteArray);
+        Files.write(Paths.get(BASE_LOG_DIR, myId + LOG_EXT), ObjectUtils.serializeObject(this));
     }
 }
