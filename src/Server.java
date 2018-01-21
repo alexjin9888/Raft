@@ -297,7 +297,7 @@ public class Server implements Runnable {
 
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
-                    Message message = (Message) RPCUtils.receiveMessage(channel);
+                    Message message = (Message) RPCUtils.receiveMessage(channel, true);
                     boolean senderTermStale = message.term < this.currentTerm;
                     processMessageTerm(message);
                     if (message instanceof AppendEntriesRequest) {
@@ -378,7 +378,7 @@ public class Server implements Runnable {
 
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
-                    Message message = (Message) RPCUtils.receiveMessage(channel);
+                    Message message = (Message) RPCUtils.receiveMessage(channel, true);
                     boolean myTermStale = message.term > this.currentTerm;
                     boolean senderTermStale = message.term < this.currentTerm;
                     processMessageTerm(message);
@@ -486,7 +486,7 @@ public class Server implements Runnable {
 
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
-                    Message message = (Message) RPCUtils.receiveMessage(channel);
+                    Message message = (Message) RPCUtils.receiveMessage(channel, true);
                     boolean myTermStale = message.term > this.currentTerm;
                     boolean senderTermStale = message.term < this.currentTerm;
                     processMessageTerm(message);

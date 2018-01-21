@@ -20,8 +20,9 @@ public class RPCUtils {
     private static final int BUFFER_SIZE = 1024;
 
     // Reads a full message from a channel
-    // Closes the channel afterwards and returns the received message
-    public static Message receiveMessage(SocketChannel channel) throws IOException {
+    // Most of the time, we will want to close the channel after
+    // reading the full message.
+    public static Message receiveMessage(SocketChannel channel, boolean closeChannel) throws IOException {
         Object message = null;
         // Create a buffer to store request data
         ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -50,7 +51,9 @@ public class RPCUtils {
         in.close();
         bis.close();
         
-        channel.close();
+        if (closeChannel) {
+            channel.close();
+        }
         
         return (Message) message;
     }
