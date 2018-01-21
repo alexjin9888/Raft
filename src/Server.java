@@ -269,7 +269,7 @@ public class Server implements Runnable {
     private void followerListenAndRespond() throws IOException {
         int readyChannels = 0;
         long electionTimeout = 0;
-        Date lastTimeoutTime = Date.from(Instant.now());
+        Date lastTimeoutTime = null;
         boolean resetTimeout = true;
         while (role==Server.ROLE.FOLLOWER) {
             if(resetTimeout) {
@@ -399,7 +399,6 @@ public class Server implements Runnable {
                     } else {
                         assert(false);
                     }
-
                     if (myTermStale) {
                         role = Server.ROLE.FOLLOWER;
                         break;
@@ -426,7 +425,7 @@ public class Server implements Runnable {
     //    set commitIndex = N (§5.3, §5.4).
     private void leaderSendHeartbeatsAndListen() throws IOException {
         int readyChannels = 0;
-        Date currTime = null;
+        Date lastTimeoutTime = null;
 
         // Leader-specific properties and actions
         // initialize volatile state on leaders
@@ -435,8 +434,7 @@ public class Server implements Runnable {
             // corresponding to the next available index
             meta.nextIndex = (this.myPersistentState.log.size() - 1) + 1;
             meta.matchIndex = -1;
-        }
-        Date lastHeartbeatTime = null;        
+        }     
 
         while (role==Server.ROLE.LEADER) {
             readyChannels = listenerThread.readSelector.selectNow();
@@ -444,17 +442,16 @@ public class Server implements Runnable {
                 // Proj2: we may not be able to broadcast the same message to all servers,
                 //   and so we may need to change the interface of broadcast(..), or use a
                 //   different method to send server-tailored messages to all servers.
-                currTime = Date.from(Instant.now());
+
                 // null check allows us to send initial empty AppendEntriesRequests upon election
-                if(lastHeartbeatTime==null) {
+                if(lastTimeoutTime==null) {
                     broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
-                    lastHeartbeatTime = Date.from(Instant.now());
-                }
-                // send regular heartbeat messages with log entries after a heartbeat interval has passed
-                // Proj2: add proper log entry (if needed) as argument into AppendEntriesRequest
-                if(currTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
+                    lastTimeoutTime = Date.from(Instant.now());
+                } else if (Date.from(Instant.now()).getTime() - lastTimeoutTime.getTime() >= HEARTBEAT_INTERVAL) {
+                    // send regular heartbeat messages with log entries after a heartbeat interval has passed
+                    // Proj2: add proper log entry (if needed) as argument into AppendEntriesRequest
                     broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
-                    lastHeartbeatTime = Date.from(Instant.now());
+                    lastTimeoutTime = Date.from(Instant.now());
                 }
             } else {
                 logMessage("about to iterate over keys");
@@ -512,7 +509,7 @@ public class Server implements Runnable {
     public static void main(String[] args) {
         if (args.length!=2) {
             System.out.println("Please suppply exactly two arguments");
-            System.out.println("Usage: <myPortIndex> <port1>,<port2>,...");
+            System.out.println("Usage: <myPortIndex> <port0>,<port1>,...");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(-1);
         }
@@ -522,7 +519,7 @@ public class Server implements Runnable {
         
         if (myPortIndex < 0 || myPortIndex >= allPorts.length) {
             System.out.println("Please supply a valid index for first argument");
-            System.out.println("Usage: <myPortIndex> <port1>,<port2>,...");
+            System.out.println("Usage: <myPortIndex> <port0>,<port1>,...");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(-1);
         }
