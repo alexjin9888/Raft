@@ -14,7 +14,7 @@ import java.nio.channels.SocketChannel;
 //        entire message object?
 // TODO Consider appropriate behavior if the recipient goes down
 //   before we write out the entire contents of the buffer
-public class RPCUtils {
+public class NetworkUtils {
 
     // size of buffer for reading/writing from/to a server (in bytes)
     private static final int BUFFER_SIZE = 1024;

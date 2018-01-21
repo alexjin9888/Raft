@@ -40,7 +40,7 @@ import java.util.HashMap;
  *   3) Persistent data-storage is implemented so that accidental server
  *      failures can be restored efficiently
  *   4) Cluster will be fully functional as long as a majority of the servers
- *      in the cluster are running and respond promptly to RPC requests.
+ *      in the cluster are running and respond promptly to requests.
  *
  *
  *
@@ -151,7 +151,7 @@ public class Server implements Runnable {
     private void saveStateAndSendMessage(InetSocketAddress address, Message message) {
         try {
             this.myPersistentState.save();
-            RPCUtils.sendMessage(address, message);
+            NetworkUtils.sendMessage(address, message);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -206,7 +206,7 @@ public class Server implements Runnable {
         }
     }
 
-    // Processes an AppendEntries RPC from leader ($5.3 Log replication)
+    // Processes an AppendEntries request from leader ($5.3 Log replication)
     // If conflicts exist, we delete our record up to the conflicting one
     // Otherwise add new entries to our log
     // Update commitIndex when necessary
@@ -265,8 +265,8 @@ public class Server implements Runnable {
     }
 
     // Follower does the following 2 tasks:
-    //   1) Respond to RPCs from candidates and leaders
-    //   2) If election timeout elapses without receiving AppendEntries RPC from
+    //   1) Respond to requests from candidates and leaders
+    //   2) If election timeout elapses without receiving a valid AppendEntries request from
     //      current leader or granting vote to candidate: convert to candidate
     private void followerListenAndRespond() throws IOException {
         int readyChannels = 0;
@@ -296,7 +296,7 @@ public class Server implements Runnable {
                     SelectionKey key = keyIterator.next();
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
-                    Message message = (Message) RPCUtils.receiveMessage(channel, true);
+                    Message message = (Message) NetworkUtils.receiveMessage(channel, true);
                     boolean senderTermStale = message.term < this.myPersistentState.currentTerm;
                     processMessageTerm(message);
                     if (message instanceof AppendEntriesRequest) {
@@ -326,9 +326,9 @@ public class Server implements Runnable {
     //      a) Increment currentTerm
     //      b) Vote for self
     //      c) Reset election timer
-    //      d) Send RequestVote RPCs to all other servers
+    //      d) Send RequestVote requests to all other servers
     //   2) If votes received from majority of servers: become leader
-    //   3) If AppendEntries RPC received from new leader: convert to follower
+    //   3) If AppendEntries request received from new leader: convert to follower
     //   4) If election timeout elapses: start new election
     private void candidateRunElection() throws IOException {
         int readyChannels = 0;
@@ -370,7 +370,7 @@ public class Server implements Runnable {
                     SelectionKey key = keyIterator.next();
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
-                    Message message = (Message) RPCUtils.receiveMessage(channel, true);
+                    Message message = (Message) NetworkUtils.receiveMessage(channel, true);
                     boolean myTermStale = message.term > this.myPersistentState.currentTerm;
                     boolean senderTermStale = message.term < this.myPersistentState.currentTerm;
                     processMessageTerm(message);
@@ -415,12 +415,12 @@ public class Server implements Runnable {
     }
 
     // Leader does the following 4 tasks:
-    // 1) Upon election: send initial empty AppendEntries RPCs (heartbeat) to
+    // 1) Upon election: send initial empty AppendEntries requests (heartbeat) to
     //    each server; repeat during idle periods to prevent election timeouts
     //    (§5.2)
     // 2) If command received from client: append entry to local log, respond
     //    after entry applied to state machine (§5.3) 
-    // 3) If last log index ≥ nextIndex for a follower: send AppendEntries RPC
+    // 3) If last log index ≥ nextIndex for a follower: send AppendEntries requests
     //    with log entries starting at nextIndex
     //    a) If successful: update nextIndex and matchIndex for follower (§5.3)
     //    b) If AppendEntries fails because of log inconsistency: decrement
@@ -449,7 +449,7 @@ public class Server implements Runnable {
                 //   and so we may need to change the interface of broadcast(..), or use a
                 //   different method to send server-tailored messages to all servers.
                 currTime = Date.from(Instant.now());
-                // null check allows us to send initial empty AppendEntriesRPCs upon election
+                // null check allows us to send initial empty AppendEntriesRequests upon election
                 if(lastHeartbeatTime==null) {
                     broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
                     lastHeartbeatTime = Date.from(Instant.now());
@@ -470,7 +470,7 @@ public class Server implements Runnable {
                     SelectionKey key = keyIterator.next();
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
-                    Message message = (Message) RPCUtils.receiveMessage(channel, true);
+                    Message message = (Message) NetworkUtils.receiveMessage(channel, true);
                     boolean myTermStale = message.term > this.myPersistentState.currentTerm;
                     boolean senderTermStale = message.term < this.myPersistentState.currentTerm;
                     processMessageTerm(message);
@@ -513,7 +513,8 @@ public class Server implements Runnable {
 
     public static void main(String[] args) {
         if (args.length!=2) {
-            System.out.println("Usage: <myPortIndex> <port1>,<port2>,...");
+            System.out.println("Usage: <myPortIndexInList> <port1>,<port2>,...");
+            System.out.println("Note: List of ports is 0-indexed");
             System.exit(-1);
         }
 
@@ -521,7 +522,7 @@ public class Server implements Runnable {
         HashMap<String, InetSocketAddress> serverAddressesMap = new HashMap<String, InetSocketAddress>();
         String[] allPorts = args[1].split(",");
         for (int i=0; i<allPorts.length; i++) {
-            serverAddressesMap.put("Server" + (i+1), new InetSocketAddress("localhost", Integer.parseInt(allPorts[i])));   
+            serverAddressesMap.put("Server" + i, new InetSocketAddress("localhost", Integer.parseInt(allPorts[i])));   
         }
         Server myServer = new Server("Server" + args[0], serverAddressesMap);
         myServer.run();

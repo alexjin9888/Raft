@@ -1,5 +1,5 @@
 /*
- * Reply to RequestVoteRPCMessages     
+ * Reply to RequestVoteRequests
  */
 public class RequestVoteReply extends Message {
     boolean voteGranted;    // true means candidate received vote
