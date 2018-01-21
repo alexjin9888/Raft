@@ -23,7 +23,7 @@ import java.util.Date;
 import java.util.HashMap;
 
 /* 
- * The Server class implements features as per the RAFT concensus protocol.
+ * The Server class implements features as per the RAFT consensus protocol.
  *  Raft defines a distributed consensus algorithm for maintaining a shared
  *  state machine. Each Raft node maintains a complete copy of the state
  *  machine. Cluster nodes elect a leader who collects and distributes updates
