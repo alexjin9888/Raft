@@ -15,8 +15,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+//import org.apache.logging.log4j.LogManager;
+//import org.apache.logging.log4j.Logger;
 
 import java.time.Instant;
 import java.util.Date;
@@ -81,7 +81,7 @@ public class Server implements Runnable {
 
     // Tracing and debugging logger
     // see: https://logging.apache.org/log4j/2.0/manual/api.html
-    private static final Logger myLogger = LogManager.getLogger(Server.class);
+//    private static final Logger myLogger = LogManager.getLogger(Server.class);
 
     // Initialize a server with its Id and a HashMap between servers and their
     // meta-data.
@@ -117,7 +117,7 @@ public class Server implements Runnable {
         this.lastApplied = -1;
 
         // Debug
-        myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
+//        myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
     }
 
     // Startup the server
@@ -153,7 +153,7 @@ public class Server implements Runnable {
             this.myPersistentState.save();
             RPCUtils.sendMessage(address, message);
         } catch (IOException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
         }
     }
 
@@ -163,15 +163,14 @@ public class Server implements Runnable {
         logMessage("broadcasting");
 
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
-            String[] entries = {};
             saveStateAndSendMessage(meta.address, message);
         }
     }
 
     // Helper logger that logs to a log4j2 logger instance
     private void logMessage(Object message) {
-        myLogger.info(myId + " :: " + role + " :: " + message);
-        // System.out.println(myId + " :: " + role + " :: " + message);
+//        myLogger.info(myId + " :: " + role + " :: " + message);
+         System.out.println(myId + " :: " + role + " :: " + message);
     }
 
     // Compares the sender's term against ours
@@ -271,7 +270,6 @@ public class Server implements Runnable {
     private void followerListenAndRespond() throws IOException {
         int readyChannels = 0;
         long electionTimeout = 0;
-        Date currTime = null;
         Date lastTimeoutTime = Date.from(Instant.now());
         boolean resetTimeout = true;
         while (role==Server.ROLE.FOLLOWER) {
@@ -337,7 +335,6 @@ public class Server implements Runnable {
         int readyChannels = 0;
         long electionTimeout = 0;
         Date lastTimeoutTime = null;
-        Date currTime = null;
         boolean resetTimeout = true;
 
         // Candidate-specific properties
