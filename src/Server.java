@@ -149,7 +149,7 @@ public class Server implements Runnable {
                         followerListenAndRespond();
                         break;
                     case CANDIDATE: 
-                        candidateRunForElection();
+                        candidateRunElection();
                         break;
                     case LEADER:
                         leaderSendHeartbeatsAndListen();
@@ -322,7 +322,6 @@ public class Server implements Runnable {
                     } else if (key.isReadable()) {
                         logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
-
                         Message message = (Message) RPCUtils.receiveMessage(channel);
                         boolean senderTermStale = message.term < this.currentTerm;
                         processMessageTerm(message);
@@ -345,7 +344,6 @@ public class Server implements Runnable {
                     } else if (key.isWritable()) {
                         logMessage("about to write");
                     }
-
                     keyIterator.remove();
                 }
                 if (!resetTimeout) {
@@ -366,22 +364,25 @@ public class Server implements Runnable {
     //   2) If votes received from majority of servers: become leader
     //   3) If AppendEntries RPC received from new leader: convert to follower
     //   4) If election timeout elapses: start new election
-    private void candidateRunForElection() throws IOException {
+    private void candidateRunElection() throws IOException {
         int readyChannels = 0;
-        int votesReceived = 0;
         long electionTimeout = 0;
         Date beforeSelectTime = null;
         Date currTime = null;
         boolean resetTimeout = true;
+
+        // Candidate-specific properties
+        int votesReceived = 0;
+
         while (role==Server.ROLE.CANDIDATE) {
             if(resetTimeout) {
                 beforeSelectTime = Date.from(Instant.now());
                 electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
-                // Start Election
+                resetTimeout = false;
+                // Candidate-specific: Start Election
                 currentTerm += 1;
                 votesReceived = 1;
                 this.votedFor = myId;
-                resetTimeout = false;
                 int lastLogIndex = this.log.size()-1;
                 // lastLogTerm = -1 means there are no log entries
                 int lastLogTerm = lastLogIndex < 0 ?
@@ -411,19 +412,10 @@ public class Server implements Runnable {
                         logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
                         Message message = (Message) RPCUtils.receiveMessage(channel);
-                        boolean senderTermStale = message.term < this.currentTerm;
                         boolean myTermStale = message.term > this.currentTerm;
+                        boolean senderTermStale = message.term < this.currentTerm;
                         processMessageTerm(message);
-                        if (message instanceof RequestVoteReply) {
-                            RequestVoteReply reply = (RequestVoteReply) message;
-                            if (reply.voteGranted) {
-                                votesReceived += 1;
-                            }
-                            if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
-                                role = Server.ROLE.LEADER;
-                                break;
-                            }
-                        } else if (message instanceof AppendEntriesRequest) {
+                        if (message instanceof AppendEntriesRequest) {
                             logMessage(message);
                             AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
@@ -440,6 +432,15 @@ public class Server implements Runnable {
 
                             reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
                             RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        } else if (message instanceof RequestVoteReply) {
+                            RequestVoteReply reply = (RequestVoteReply) message;
+                            if (reply.voteGranted) {
+                                votesReceived += 1;
+                            }
+                            if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
+                                role = Server.ROLE.LEADER;
+                                break;
+                            }
                         } else {
                             assert(false);
                         }
@@ -450,7 +451,6 @@ public class Server implements Runnable {
                     } else if (key.isWritable()) {
                         logMessage("about to write");
                     }
-
                     keyIterator.remove();
                 }
                 if (!resetTimeout) {
@@ -462,7 +462,7 @@ public class Server implements Runnable {
         }
     }
 
-    // Candidate does the following 4 tasks:
+    // Leader does the following 4 tasks:
     // 1) Upon election: send initial empty AppendEntries RPCs (heartbeat) to
     //    each server; repeat during idle periods to prevent election timeouts
     //    (§5.2)
@@ -477,6 +477,10 @@ public class Server implements Runnable {
     //    matchIndex[i] ≥ N, and log[N].term == currentTerm:
     //    set commitIndex = N (§5.3, §5.4).
     private void leaderSendHeartbeatsAndListen() throws IOException {
+        int readyChannels = 0;
+        Date currTime = null;
+
+        // Leader-specific properties and actions
         // initialize volatile state on leaders
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
             // Subtracting 1 makes it apparent that we want to send the entry
@@ -484,9 +488,8 @@ public class Server implements Runnable {
             meta.nextIndex = (this.log.size() - 1) + 1;
             meta.matchIndex = -1;
         }
-        int readyChannels = 0;
-        Date lastHeartbeatTime = null;
-        Date currTime = null;
+        Date lastHeartbeatTime = null;        
+
         while (role==Server.ROLE.LEADER) {
             readyChannels = selector.selectNow();
             if (readyChannels == 0) {
@@ -524,10 +527,21 @@ public class Server implements Runnable {
                         logMessage("about to read");
                         SocketChannel channel = (SocketChannel) key.channel();
                         Message message = (Message) RPCUtils.receiveMessage(channel);
-                        boolean senderTermStale = message.term < this.currentTerm;
                         boolean myTermStale = message.term > this.currentTerm;
+                        boolean senderTermStale = message.term < this.currentTerm;
                         processMessageTerm(message);
-                        if (message instanceof AppendEntriesReply) {
+                        if (message instanceof AppendEntriesRequest) {
+                            logMessage(message);
+                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
+                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        } else if (message instanceof RequestVoteRequest) {
+                            logMessage(message);
+                            RequestVoteReply reply = null;
+                            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
+
+                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
+                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        } else if (message instanceof AppendEntriesReply) {
                             // Proj2: write logic to handle AppendEntries message (as leader)
                             AppendEntriesReply reply = (AppendEntriesReply) message;
                             ServerMetadata meta = this.otherServersMetadataMap.get(reply.serverId);
@@ -540,17 +554,6 @@ public class Server implements Runnable {
                             } else {
                                 meta.nextIndex -= 1;
                             }
-                        } else if (message instanceof RequestVoteRequest) {
-                            logMessage(message);
-                            RequestVoteReply reply = null;
-                            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
-
-                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                        } else if (message instanceof AppendEntriesRequest) {
-                            logMessage(message);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                         } else {
                             assert(false);
                         }
