@@ -67,6 +67,7 @@ public class Server implements Runnable {
     private ROLE role; // my role, one of FOLLOWER, CANDIDATE, or LEADER
 
     private ListenerThread listenerThread;
+    private Timer timer;
 
     // PersistentStorage
     private PersistentState myPersistentState;
@@ -110,6 +111,8 @@ public class Server implements Runnable {
         // Start a thread to accept connections and add them to read selector
         listenerThread = new ListenerThread(myAddress);
         listenerThread.start();
+        
+        timer = new Timer();
 
         this.myPersistentState = new PersistentState(this.myId);
 
@@ -125,7 +128,7 @@ public class Server implements Runnable {
     public void run() {
         try {
             while(true) {
-
+                timer.reset(0);
                 // 3 While loops for different roles
                 switch (role) {
                     case FOLLOWER:
@@ -267,22 +270,16 @@ public class Server implements Runnable {
     //   2) If election timeout elapses without receiving a valid AppendEntries request from
     //      current leader or granting vote to candidate: convert to candidate
     private void followerListenAndRespond() throws IOException {
-        int readyChannels = 0;
-        long electionTimeout = 0;
-        Date lastTimeoutTime = null;
-        boolean resetTimeout = true;
+        // Follower-specific action
+        timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
+
         while (role==Server.ROLE.FOLLOWER) {
-            if(resetTimeout) {
-                lastTimeoutTime = Date.from(Instant.now());
-                electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
-                resetTimeout = false;
+            if(timer.timeIsUp()) {
+                role = Server.ROLE.CANDIDATE;
+                break;
             }
-            readyChannels = listenerThread.readSelector.selectNow();
-            if (readyChannels == 0) {
-                if (Date.from(Instant.now()).getTime() - lastTimeoutTime.getTime() >= electionTimeout) {
-                    role = Server.ROLE.CANDIDATE;
-                    break;
-                }
+            if (listenerThread.readSelector.selectNow() == 0) {
+                continue;
             } else {
                 logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
@@ -299,7 +296,9 @@ public class Server implements Runnable {
                     if (message instanceof AppendEntriesRequest) {
                         logMessage(message);
                         AppendEntriesReply reply = new AppendEntriesReply(myId, this.myPersistentState.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                        resetTimeout = !senderTermStale;
+                        if (!senderTermStale) {
+                            timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
+                        }
                         saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                     } else if (message instanceof RequestVoteRequest) {
                         logMessage(message);
@@ -307,7 +306,9 @@ public class Server implements Runnable {
                         boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
 
                         reply = new RequestVoteReply(myId, this.myPersistentState.currentTerm, grantingVote);
-                        resetTimeout = grantingVote;
+                        if (grantingVote) {
+                            timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
+                        }
                         saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                     } else {
                         assert(false);
@@ -328,19 +329,12 @@ public class Server implements Runnable {
     //   3) If AppendEntries request received from new leader: convert to follower
     //   4) If election timeout elapses: start new election
     private void candidateRunElection() throws IOException {
-        int readyChannels = 0;
-        long electionTimeout = 0;
-        Date lastTimeoutTime = null;
-        boolean resetTimeout = true;
-
         // Candidate-specific properties
         int votesReceived = 0;
 
         while (role==Server.ROLE.CANDIDATE) {
-            if(resetTimeout) {
-                lastTimeoutTime = Date.from(Instant.now());
-                electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
-                resetTimeout = false;
+            if(timer.timeIsUp()) {
+                timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
                 // Candidate-specific: Start Election
                 this.myPersistentState.currentTerm += 1;
                 votesReceived = 1;
@@ -351,11 +345,8 @@ public class Server implements Runnable {
                                   -1 : this.myPersistentState.log.get(lastLogIndex).term;
                 broadcast(new RequestVoteRequest(myId, this.myPersistentState.currentTerm, lastLogIndex, lastLogTerm));
             }
-            readyChannels = listenerThread.readSelector.selectNow();
-            if (readyChannels == 0) {
-                if (Date.from(Instant.now()).getTime() - lastTimeoutTime.getTime() >= electionTimeout) {
-                    resetTimeout = true;
-                }
+            if (listenerThread.readSelector.selectNow() == 0) {
+                continue;
             } else {
                 logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
@@ -424,9 +415,6 @@ public class Server implements Runnable {
     //    matchIndex[i] ≥ N, and log[N].term == currentTerm:
     //    set commitIndex = N (§5.3, §5.4).
     private void leaderSendHeartbeatsAndListen() throws IOException {
-        int readyChannels = 0;
-        Date lastTimeoutTime = null;
-
         // Leader-specific properties and actions
         // initialize volatile state on leaders
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
@@ -434,25 +422,22 @@ public class Server implements Runnable {
             // corresponding to the next available index
             meta.nextIndex = (this.myPersistentState.log.size() - 1) + 1;
             meta.matchIndex = -1;
-        }     
+        }
+        // send initial empty AppendEntriesRequests upon promotion to leader
+        broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
 
         while (role==Server.ROLE.LEADER) {
-            readyChannels = listenerThread.readSelector.selectNow();
-            if (readyChannels == 0) {
+            if (timer.timeIsUp()) {
                 // Proj2: we may not be able to broadcast the same message to all servers,
                 //   and so we may need to change the interface of broadcast(..), or use a
                 //   different method to send server-tailored messages to all servers.
-
-                // null check allows us to send initial empty AppendEntriesRequests upon election
-                if(lastTimeoutTime==null) {
-                    broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
-                    lastTimeoutTime = Date.from(Instant.now());
-                } else if (Date.from(Instant.now()).getTime() - lastTimeoutTime.getTime() >= HEARTBEAT_INTERVAL) {
-                    // send regular heartbeat messages with log entries after a heartbeat interval has passed
-                    // Proj2: add proper log entry (if needed) as argument into AppendEntriesRequest
-                    broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
-                    lastTimeoutTime = Date.from(Instant.now());
-                }
+                // Proj2: add proper log entry (if needed) as argument into AppendEntriesRequest
+                // send regular heartbeat messages with server-tailored log entries after a heartbeat interval has passed
+                broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
+                timer.reset(HEARTBEAT_INTERVAL);
+            }
+            if (listenerThread.readSelector.selectNow() == 0) {
+                continue;
             } else {
                 logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
