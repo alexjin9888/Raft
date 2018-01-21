@@ -14,7 +14,7 @@ import java.nio.channels.SocketChannel;
 //        entire message object?
 // TODO Consider appropriate behavior if the recipient goes down
 //   before we write out the entire contents of the buffer
-public class RPCUtils {
+public class NetworkUtils {
 
     // size of buffer for reading/writing from/to a server (in bytes)
     private static final int BUFFER_SIZE = 1024;
@@ -23,39 +23,28 @@ public class RPCUtils {
     // Most of the time, we will want to close the channel after
     // reading the full message.
     public static Message receiveMessage(SocketChannel channel, boolean closeChannel) throws IOException {
-        Object message = null;
         // Create a buffer to store request data
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-        ByteArrayOutputStream messageBytes = new ByteArrayOutputStream();
+        ByteArrayOutputStream messageBytesStream = new ByteArrayOutputStream();
 
         int bytesRead = channel.read(buffer);
         while (bytesRead > 0) {
             buffer.flip();
             while(buffer.hasRemaining()) {
-                messageBytes.write(buffer.get());
+                messageBytesStream.write(buffer.get());
             }
             buffer.clear();
             bytesRead = channel.read(buffer);
         }
-        messageBytes.flush();
-        ByteArrayInputStream bis = new ByteArrayInputStream(messageBytes.toByteArray());
-        messageBytes.close();
-
-        ObjectInputStream in = new ObjectInputStream(bis);
-        try {
-            message = in.readObject();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-
-        in.close();
-        bis.close();
+        messageBytesStream.flush();
+        byte[] messageBytes =  messageBytesStream.toByteArray();
+        messageBytesStream.close();
         
         if (closeChannel) {
             channel.close();
         }
         
-        return (Message) message;
+        return (Message) ObjectUtils.deserializeObject(messageBytes);
     }
 
     // Sends a full message from a channel
@@ -66,18 +55,9 @@ public class RPCUtils {
         socketChannel.configureBlocking(false);
         
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        ObjectOutputStream out = null;
-        byte[] messageByteArray = null;
-        out = new ObjectOutputStream(bos);
-        out.writeObject(message);
-        out.flush();
-        messageByteArray = bos.toByteArray();
-        out.close();
-        bos.close();
-
+        
         buffer.clear();
-        buffer.put(messageByteArray);
+        buffer.put(ObjectUtils.serializeObject(message));
         buffer.flip();
         while(buffer.hasRemaining()) {
             socketChannel.write(buffer);

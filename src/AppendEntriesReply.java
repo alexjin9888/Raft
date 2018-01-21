@@ -1,5 +1,5 @@
 /*
- * Reply to AppendEntriesRPCMessages   
+ * Reply to AppendEntriesRequest   
  */
 public class AppendEntriesReply extends Message {
     boolean success;    // true if  follower contained entry matching
