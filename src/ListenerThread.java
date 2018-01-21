@@ -10,7 +10,7 @@ import java.util.Iterator;
 public class ListenerThread extends Thread {
     private ServerSocketChannel acceptChannel;
     private Selector acceptSelector;
-    public Selector readSelector; // can be set in other files
+    public Selector readSelector; // register channels to read from using this selector
     
     public ListenerThread(InetSocketAddress address) {
         try {
@@ -20,7 +20,7 @@ public class ListenerThread extends Thread {
             
             acceptSelector = Selector.open();
             acceptChannel.register(acceptSelector, SelectionKey.OP_ACCEPT);
-            readSelector = Selector.open();   
+            readSelector = Selector.open();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -30,7 +30,6 @@ public class ListenerThread extends Thread {
         synchronized(this) {
             readSelector.close();
             readSelector = Selector.open();
-            readSelector = readSelector; 
         }
     }
 
