@@ -20,4 +20,11 @@ public class ServerMetadata {
         this.nextIndex = 0;
         this.matchIndex = -1;
     }
+
+    @Override
+    public String toString() {
+        return "ServerMetadata [id=" + id + ", address=" + address
+                + ", nextIndex=" + nextIndex + ", matchIndex=" + matchIndex
+                + "]";
+    }
 }

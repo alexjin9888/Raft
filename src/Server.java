@@ -15,8 +15,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-//import org.apache.logging.log4j.LogManager;
-//import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.time.Instant;
 import java.util.Date;
@@ -48,9 +48,9 @@ import java.util.HashMap;
  */
 public class Server implements Runnable {
     // Magical constants
-    private static final int HEARTBEAT_INTERVAL = 400;
-    private static final int MIN_ELECTION_TIMEOUT = 1500;
-    private static final int MAX_ELECTION_TIMEOUT = 3000;
+    private static final int HEARTBEAT_INTERVAL = 1000;
+    private static final int MIN_ELECTION_TIMEOUT = 3000;
+    private static final int MAX_ELECTION_TIMEOUT = 5000;
     
     private static enum ROLE { FOLLOWER, CANDIDATE, LEADER; }
 
@@ -81,7 +81,7 @@ public class Server implements Runnable {
 
     // Tracing and debugging logger
     // see: https://logging.apache.org/log4j/2.0/manual/api.html
-//    private static final Logger myLogger = LogManager.getLogger(Server.class);
+    private static final Logger myLogger = LogManager.getLogger(Server.class);
 
     // Initialize a server with its Id and a HashMap between servers and their
     // meta-data.
@@ -98,8 +98,8 @@ public class Server implements Runnable {
         for (HashMap.Entry<String, InetSocketAddress> entry : serverAddressesMap.entrySet()) {
             String elemId = entry.getKey();
             InetSocketAddress elemAddress = entry.getValue();  
-
-            if (elemId == this.myId) {
+            
+            if (elemId.equals(this.myId)) {
                 myAddress = elemAddress;
             } else {
                 this.otherServersMetadataMap.put(elemId, new ServerMetadata(elemId, elemAddress));
@@ -117,7 +117,7 @@ public class Server implements Runnable {
         this.lastApplied = -1;
 
         // Debug
-//        myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
+        myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
     }
 
     // Startup the server
@@ -153,7 +153,7 @@ public class Server implements Runnable {
             this.myPersistentState.save();
             NetworkUtils.sendMessage(address, message);
         } catch (IOException e) {
-//            e.printStackTrace();
+            e.printStackTrace();
         }
     }
 
@@ -161,7 +161,7 @@ public class Server implements Runnable {
     private void broadcast(Message message) throws IOException {
 
         logMessage("broadcasting");
-
+        
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
             saveStateAndSendMessage(meta.address, message);
         }
@@ -169,8 +169,7 @@ public class Server implements Runnable {
 
     // Helper logger that logs to a log4j2 logger instance
     private void logMessage(Object message) {
-//        myLogger.info(myId + " :: " + role + " :: " + message);
-         System.out.println(myId + " :: " + role + " :: " + message);
+        myLogger.info(myId + " :: " + role + " :: " + message);
     }
 
     // Compares the sender's term against ours
@@ -187,7 +186,7 @@ public class Server implements Runnable {
         if (senderTermStale) {
             return false;
         } else {
-            if (this.myPersistentState.votedFor == null || this.myPersistentState.votedFor == message.serverId) {
+            if (this.myPersistentState.votedFor == null || this.myPersistentState.votedFor.equals(message.serverId)) {
                 int lastLogIndex = this.myPersistentState.log.size() - 1;
                 int lastLogTerm = lastLogIndex < 0 ? -1 : this.myPersistentState.log.get(lastLogIndex).term;
                 // Proj2: make sure that this logic is correct for checking that a candidate's
@@ -493,7 +492,9 @@ public class Server implements Runnable {
                                 this.commitIndex = meta.matchIndex;
                             }
                         } else {
-                            meta.nextIndex -= 1;
+                            if (meta.nextIndex > 0) {
+                                meta.nextIndex -= 1;
+                            }
                         }
                     } else {
                         assert(false);
@@ -510,18 +511,30 @@ public class Server implements Runnable {
 
     public static void main(String[] args) {
         if (args.length!=2) {
-            System.out.println("Usage: <myPortIndexInList> <port1>,<port2>,...");
+            System.out.println("Please suppply exactly two arguments");
+            System.out.println("Usage: <myPortIndex> <port1>,<port2>,...");
+            System.out.println("Note: List of ports is 0-indexed");
+            System.exit(-1);
+        }
+
+        String[] allPorts = args[1].split(",");
+        int myPortIndex = Integer.parseInt(args[0]); 
+        
+        if (myPortIndex < 0 || myPortIndex >= allPorts.length) {
+            System.out.println("Please supply a valid index for first argument");
+            System.out.println("Usage: <myPortIndex> <port1>,<port2>,...");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(-1);
         }
 
         System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
         HashMap<String, InetSocketAddress> serverAddressesMap = new HashMap<String, InetSocketAddress>();
-        String[] allPorts = args[1].split(",");
         for (int i=0; i<allPorts.length; i++) {
             serverAddressesMap.put("Server" + i, new InetSocketAddress("localhost", Integer.parseInt(allPorts[i])));   
         }
-        Server myServer = new Server("Server" + args[0], serverAddressesMap);
+
+        Server myServer = new Server("Server" + myPortIndex, serverAddressesMap);
+        System.out.println("Running Server" + myPortIndex + " now");
         myServer.run();
     }
 }
