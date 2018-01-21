@@ -65,9 +65,8 @@ public class Server implements Runnable {
     // *   1) matchIndex (only applicable for leader)
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
     private ROLE role; // my role, one of FOLLOWER, CANDIDATE, or LEADER
-    
-    private ServerSocketChannel myListenerChannel; // singleton
-    private Selector selector;
+
+    private ListenerThread listenerThread;
 
     // Persistent State
     // * Latest term server has seen (initialized to 0 on first boot, increases
@@ -115,14 +114,9 @@ public class Server implements Runnable {
         }
         role = ROLE.FOLLOWER;
 
-        // Create a server to listen and respond to requests
-        try {
-            myListenerChannel = ServerSocketChannel.open();
-            myListenerChannel.configureBlocking(false);
-            myListenerChannel.socket().bind(myAddress);   
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        // Start a thread to accept connections and add them to read selector
+        listenerThread = new ListenerThread(myAddress);
+        listenerThread.start();
 
         // TODO Conditionally load in persistent state if present
         this.currentTerm = 0;
@@ -141,8 +135,7 @@ public class Server implements Runnable {
     public void run() {
         try {
             while(true) {
-                selector = Selector.open();
-                myListenerChannel.register(selector, SelectionKey.OP_ACCEPT);
+
                 // 3 While loops for different roles
                 switch (role) {
                     case FOLLOWER:
@@ -157,7 +150,8 @@ public class Server implements Runnable {
                     default:
                         assert(false);
                 }
-                selector.close();
+
+                listenerThread.resetReadSelector();
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -165,27 +159,14 @@ public class Server implements Runnable {
     }
 
     // Helper function to send message to all other servers (excluding me)
-    private void broadcast(Message message) {
+    private void broadcast(Message message) throws IOException {
 
         logMessage("broadcasting");
 
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
             String[] entries = {};
-            try {
-                RPCUtils.sendMessage(meta.address, message);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            RPCUtils.sendMessage(meta.address, message);
         }
-    }
-
-    // Helper function to accept an incoming connection in non-blocking mode
-    // We then get ready to read the incoming message
-    private void acceptConnection() throws IOException {
-        logMessage("about to accept");
-        SocketChannel clientChannel = myListenerChannel.accept();
-        clientChannel.configureBlocking(false);
-        clientChannel.register(selector, SelectionKey.OP_READ);
     }
 
     // Helper logger that logs to a log4j2 logger instance
@@ -300,13 +281,13 @@ public class Server implements Runnable {
                 resetTimeout = false;
             }
             logMessage("about to enter timeout");
-            readyChannels = selector.select(electionTimeout);
+            readyChannels = listenerThread.readSelector.select(electionTimeout);
             if (readyChannels == 0) {
                 role = Server.ROLE.CANDIDATE;
                 break;
             } else {
                 logMessage("about to iterate over keys");
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
@@ -314,36 +295,28 @@ public class Server implements Runnable {
 
                     SelectionKey key = keyIterator.next();
 
-                    if(key.isAcceptable()) {
-                        acceptConnection();
-                    } else if (key.isConnectable()) {
-                        logMessage("about to connect");
-                        // pass
-                    } else if (key.isReadable()) {
-                        logMessage("about to read");
-                        SocketChannel channel = (SocketChannel) key.channel();
-                        Message message = (Message) RPCUtils.receiveMessage(channel);
-                        boolean senderTermStale = message.term < this.currentTerm;
-                        processMessageTerm(message);
-                        if (message instanceof AppendEntriesRequest) {
-                            logMessage(message);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                            resetTimeout = !senderTermStale;
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                        } else if (message instanceof RequestVoteRequest) {
-                            logMessage(message);
-                            RequestVoteReply reply = null;
-                            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
+                    logMessage("about to read");
+                    SocketChannel channel = (SocketChannel) key.channel();
+                    Message message = (Message) RPCUtils.receiveMessage(channel);
+                    boolean senderTermStale = message.term < this.currentTerm;
+                    processMessageTerm(message);
+                    if (message instanceof AppendEntriesRequest) {
+                        logMessage(message);
+                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
+                        resetTimeout = !senderTermStale;
+                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                    } else if (message instanceof RequestVoteRequest) {
+                        logMessage(message);
+                        RequestVoteReply reply = null;
+                        boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
 
-                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
-                            resetTimeout = grantingVote;
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                        } else {
-                            assert(false);
-                        }
-                    } else if (key.isWritable()) {
-                        logMessage("about to write");
+                        reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
+                        resetTimeout = grantingVote;
+                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                    } else {
+                        assert(false);
                     }
+
                     keyIterator.remove();
                 }
                 if (!resetTimeout) {
@@ -390,12 +363,12 @@ public class Server implements Runnable {
                 broadcast(new RequestVoteRequest(myId, currentTerm, lastLogIndex, lastLogTerm));
             }
             logMessage("about to enter timeout");
-            readyChannels = selector.select(electionTimeout);
+            readyChannels = listenerThread.readSelector.select(electionTimeout);
             if (readyChannels == 0) {
                 resetTimeout = true;
             } else {
                 logMessage("about to iterate over keys");
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
@@ -403,54 +376,47 @@ public class Server implements Runnable {
 
                     SelectionKey key = keyIterator.next();
 
-                    if(key.isAcceptable()) {
-                        acceptConnection();
-                    } else if (key.isConnectable()) {
-                        logMessage("about to connect");
-                        // pass
-                    } else if (key.isReadable()) {
-                        logMessage("about to read");
-                        SocketChannel channel = (SocketChannel) key.channel();
-                        Message message = (Message) RPCUtils.receiveMessage(channel);
-                        boolean myTermStale = message.term > this.currentTerm;
-                        boolean senderTermStale = message.term < this.currentTerm;
-                        processMessageTerm(message);
-                        if (message instanceof AppendEntriesRequest) {
-                            logMessage(message);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                            // If the leader's term is at least as large as the candidate's current term, then the candidate
-                            // recognizes the leader as legitimate and returns to follower state.
-                            if (!senderTermStale) {
-                                role = Server.ROLE.FOLLOWER;
-                                break;
-                            }
-                        } else if (message instanceof RequestVoteRequest) {
-                            logMessage(message);
-                            RequestVoteReply reply = null;
-                            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
-
-                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                        } else if (message instanceof RequestVoteReply) {
-                            RequestVoteReply reply = (RequestVoteReply) message;
-                            if (reply.voteGranted) {
-                                votesReceived += 1;
-                            }
-                            if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
-                                role = Server.ROLE.LEADER;
-                                break;
-                            }
-                        } else {
-                            assert(false);
-                        }
-                        if (myTermStale) {
+                    logMessage("about to read");
+                    SocketChannel channel = (SocketChannel) key.channel();
+                    Message message = (Message) RPCUtils.receiveMessage(channel);
+                    boolean myTermStale = message.term > this.currentTerm;
+                    boolean senderTermStale = message.term < this.currentTerm;
+                    processMessageTerm(message);
+                    if (message instanceof AppendEntriesRequest) {
+                        logMessage(message);
+                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
+                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        // If the leader's term is at least as large as the candidate's current term, then the candidate
+                        // recognizes the leader as legitimate and returns to follower state.
+                        if (!senderTermStale) {
                             role = Server.ROLE.FOLLOWER;
                             break;
                         }
-                    } else if (key.isWritable()) {
-                        logMessage("about to write");
+                    } else if (message instanceof RequestVoteRequest) {
+                        logMessage(message);
+                        RequestVoteReply reply = null;
+                        boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
+
+                        reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
+                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                    } else if (message instanceof RequestVoteReply) {
+                        RequestVoteReply reply = (RequestVoteReply) message;
+                        if (reply.voteGranted) {
+                            votesReceived += 1;
+                        }
+                        if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
+                            role = Server.ROLE.LEADER;
+                            break;
+                        }
+                    } else {
+                        assert(false);
                     }
+
+                    if (myTermStale) {
+                        role = Server.ROLE.FOLLOWER;
+                        break;
+                    }
+
                     keyIterator.remove();
                 }
                 if (!resetTimeout) {
@@ -491,7 +457,7 @@ public class Server implements Runnable {
         Date lastHeartbeatTime = null;        
 
         while (role==Server.ROLE.LEADER) {
-            readyChannels = selector.selectNow();
+            readyChannels = listenerThread.readSelector.selectNow();
             if (readyChannels == 0) {
                 // Proj2: we may not be able to broadcast the same message to all servers,
                 //   and so we may need to change the interface of broadcast(..), or use a
@@ -510,7 +476,7 @@ public class Server implements Runnable {
                 }
             } else {
                 logMessage("about to iterate over keys");
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
 
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
@@ -518,51 +484,42 @@ public class Server implements Runnable {
 
                     SelectionKey key = keyIterator.next();
 
-                    if(key.isAcceptable()) {
-                        acceptConnection();
-                    } else if (key.isConnectable()) {
-                        logMessage("about to connect");
-                        // pass
-                    } else if (key.isReadable()) {
-                        logMessage("about to read");
-                        SocketChannel channel = (SocketChannel) key.channel();
-                        Message message = (Message) RPCUtils.receiveMessage(channel);
-                        boolean myTermStale = message.term > this.currentTerm;
-                        boolean senderTermStale = message.term < this.currentTerm;
-                        processMessageTerm(message);
-                        if (message instanceof AppendEntriesRequest) {
-                            logMessage(message);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                        } else if (message instanceof RequestVoteRequest) {
-                            logMessage(message);
-                            RequestVoteReply reply = null;
-                            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
+                    logMessage("about to read");
+                    SocketChannel channel = (SocketChannel) key.channel();
+                    Message message = (Message) RPCUtils.receiveMessage(channel);
+                    boolean myTermStale = message.term > this.currentTerm;
+                    boolean senderTermStale = message.term < this.currentTerm;
+                    processMessageTerm(message);
+                    if (message instanceof AppendEntriesRequest) {
+                        logMessage(message);
+                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
+                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                    } else if (message instanceof RequestVoteRequest) {
+                        logMessage(message);
+                        RequestVoteReply reply = null;
+                        boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
 
-                            reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
-                            RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
-                        } else if (message instanceof AppendEntriesReply) {
-                            // Proj2: write logic to handle AppendEntries message (as leader)
-                            AppendEntriesReply reply = (AppendEntriesReply) message;
-                            ServerMetadata meta = this.otherServersMetadataMap.get(reply.serverId);
-                            if (reply.success) {
-                                meta.matchIndex = meta.nextIndex;
-                                meta.nextIndex += 1;
-                                if (testMajorityN(meta.matchIndex)) {
-                                    this.commitIndex = meta.matchIndex;
-                                }
-                            } else {
-                                meta.nextIndex -= 1;
+                        reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
+                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                    } else if (message instanceof AppendEntriesReply) {
+                        // Proj2: write logic to handle AppendEntries message (as leader)
+                        AppendEntriesReply reply = (AppendEntriesReply) message;
+                        ServerMetadata meta = this.otherServersMetadataMap.get(reply.serverId);
+                        if (reply.success) {
+                            meta.matchIndex = meta.nextIndex;
+                            meta.nextIndex += 1;
+                            if (testMajorityN(meta.matchIndex)) {
+                                this.commitIndex = meta.matchIndex;
                             }
                         } else {
-                            assert(false);
+                            meta.nextIndex -= 1;
                         }
-                        if (myTermStale) {
-                            role = Server.ROLE.FOLLOWER;
-                            break;
-                        }
-                    } else if (key.isWritable()) {
-                        logMessage("about to write");
+                    } else {
+                        assert(false);
+                    }
+                    if (myTermStale) {
+                        role = Server.ROLE.FOLLOWER;
+                        break;
                     }
                     keyIterator.remove();
                 }
