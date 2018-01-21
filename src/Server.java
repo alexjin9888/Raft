@@ -68,15 +68,8 @@ public class Server implements Runnable {
 
     private ListenerThread listenerThread;
 
-    // Persistent State
-    // * Latest term server has seen (initialized to 0 on first boot, increases
-    //   monotonically)
-    private int currentTerm;
-    // * candidateId that received vote in current term (or null if none)
-    private String votedFor;
-    // * log entries; each entry contains command for state machine, and term
-    //   when entry was received by leader (first index is 0)
-    private List<LogEntry> log;
+    // PersistentStorage
+    private PersistentState myPersistentState;
 
     // Volatile State on all servers
     // * index of highest log entry known to be committed (initialized to 0,
@@ -118,10 +111,7 @@ public class Server implements Runnable {
         listenerThread = new ListenerThread(myAddress);
         listenerThread.start();
 
-        // TODO Conditionally load in persistent state if present
-        this.currentTerm = 0;
-        this.votedFor = null;
-        this.log = new ArrayList<LogEntry>();
+        this.myPersistentState = new PersistentState(this.myId);
 
         this.commitIndex = -1;
         this.lastApplied = -1;
@@ -158,6 +148,11 @@ public class Server implements Runnable {
         }
     }
 
+    private void saveStateAndSendMessage(InetSocketAddress address, Message message) throws IOException {
+        this.myPersistentState.save();
+        RPCUtils.sendMessage(address, message);
+    }
+
     // Helper function to send message to all other servers (excluding me)
     private void broadcast(Message message) throws IOException {
 
@@ -165,7 +160,7 @@ public class Server implements Runnable {
 
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
             String[] entries = {};
-            RPCUtils.sendMessage(meta.address, message);
+            saveStateAndSendMessage(meta.address, message);
         }
     }
 
@@ -178,9 +173,9 @@ public class Server implements Runnable {
     // Compares the sender's term against ours
     // Does a term update when necessary
     private void processMessageTerm(Message message) {
-        if (message.term > this.currentTerm) {
-            this.currentTerm = message.term;
-            this.votedFor = null;
+        if (message.term > this.myPersistentState.currentTerm) {
+            this.myPersistentState.currentTerm = message.term;
+            this.myPersistentState.votedFor = null;
         }
     }
 
@@ -189,14 +184,14 @@ public class Server implements Runnable {
         if (senderTermStale) {
             return false;
         } else {
-            if (this.votedFor == null || this.votedFor == message.serverId) {
-                int lastLogIndex = this.log.size() - 1;
-                int lastLogTerm = lastLogIndex < 0 ? -1 : this.log.get(lastLogIndex).term;
+            if (this.myPersistentState.votedFor == null || this.myPersistentState.votedFor == message.serverId) {
+                int lastLogIndex = this.myPersistentState.log.size() - 1;
+                int lastLogTerm = lastLogIndex < 0 ? -1 : this.myPersistentState.log.get(lastLogIndex).term;
                 // Proj2: make sure that this logic is correct for checking that a candidate's
                 // log is at least as up-to-date as ours. Test this logic afterwards
                 if (message.lastLogIndex >= lastLogIndex && message.lastLogTerm >= lastLogTerm) {
                     assert(!senderTermStale);
-                    this.votedFor = message.serverId;
+                    this.myPersistentState.votedFor = message.serverId;
                     return true;
                 } else {
                     return false;
@@ -218,20 +213,20 @@ public class Server implements Runnable {
         } else {
             this.leaderId = message.serverId;
             // Proj2: test this code
-            if (message.prevLogIndex >= 0 && message.prevLogIndex < this.log.size()) {
+            if (message.prevLogIndex >= 0 && message.prevLogIndex < this.myPersistentState.log.size()) {
                 // Proj2: check prevLogTerm
-                if (this.log.get(message.prevLogIndex).term != message.prevLogTerm) {
-                    this.log = this.log.subList(0, message.prevLogIndex);
+                if (this.myPersistentState.log.get(message.prevLogIndex).term != message.prevLogTerm) {
+                    this.myPersistentState.log = this.myPersistentState.log.subList(0, message.prevLogIndex);
                     return false;
                 } else {
                     // Proj2: is this okay to add log entry unconditionally?
                     // Otherwise, check whether this if cond. is necessary
-                    if (!this.log.contains(message.entry)) {
-                        this.log.add(message.entry);
+                    if (!this.myPersistentState.log.contains(message.entry)) {
+                        this.myPersistentState.log.add(message.entry);
                     }
                     // Proj2: Consider implementing Figure 2, All servers, bullet point 1/2 here
                     if (message.leaderCommit > this.commitIndex) {
-                        this.commitIndex = Math.min(message.leaderCommit, this.log.size() - 1);
+                        this.commitIndex = Math.min(message.leaderCommit, this.myPersistentState.log.size() - 1);
                     }
                     return true;
                 }
@@ -259,7 +254,7 @@ public class Server implements Runnable {
         if (count <= otherServersMetadataMap.size() / 2) {
             return false;
         }
-        if (this.log.get(candidateN).term != currentTerm) {
+        if (this.myPersistentState.log.get(candidateN).term != this.myPersistentState.currentTerm) {
             return false;
         }
         return true;
@@ -300,21 +295,21 @@ public class Server implements Runnable {
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
                     Message message = (Message) RPCUtils.receiveMessage(channel, true);
-                    boolean senderTermStale = message.term < this.currentTerm;
+                    boolean senderTermStale = message.term < this.myPersistentState.currentTerm;
                     processMessageTerm(message);
                     if (message instanceof AppendEntriesRequest) {
                         logMessage(message);
-                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
+                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.myPersistentState.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
                         resetTimeout = !senderTermStale;
-                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                     } else if (message instanceof RequestVoteRequest) {
                         logMessage(message);
                         RequestVoteReply reply = null;
                         boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
 
-                        reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
+                        reply = new RequestVoteReply(myId, this.myPersistentState.currentTerm, grantingVote);
                         resetTimeout = grantingVote;
-                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                     } else {
                         assert(false);
                     }
@@ -350,14 +345,14 @@ public class Server implements Runnable {
                 electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
                 resetTimeout = false;
                 // Candidate-specific: Start Election
-                currentTerm += 1;
+                this.myPersistentState.currentTerm += 1;
                 votesReceived = 1;
-                this.votedFor = myId;
-                int lastLogIndex = this.log.size()-1;
+                this.myPersistentState.votedFor = myId;
+                int lastLogIndex = this.myPersistentState.log.size()-1;
                 // lastLogTerm = -1 means there are no log entries
                 int lastLogTerm = lastLogIndex < 0 ?
-                                  -1 : this.log.get(lastLogIndex).term;
-                broadcast(new RequestVoteRequest(myId, currentTerm, lastLogIndex, lastLogTerm));
+                                  -1 : this.myPersistentState.log.get(lastLogIndex).term;
+                broadcast(new RequestVoteRequest(myId, this.myPersistentState.currentTerm, lastLogIndex, lastLogTerm));
             }
             readyChannels = listenerThread.readSelector.selectNow();
             if (readyChannels == 0) {
@@ -377,13 +372,13 @@ public class Server implements Runnable {
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
                     Message message = (Message) RPCUtils.receiveMessage(channel, true);
-                    boolean myTermStale = message.term > this.currentTerm;
-                    boolean senderTermStale = message.term < this.currentTerm;
+                    boolean myTermStale = message.term > this.myPersistentState.currentTerm;
+                    boolean senderTermStale = message.term < this.myPersistentState.currentTerm;
                     processMessageTerm(message);
                     if (message instanceof AppendEntriesRequest) {
                         logMessage(message);
-                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.myPersistentState.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                         // If the leader's term is at least as large as the candidate's current term, then the candidate
                         // recognizes the leader as legitimate and returns to follower state.
                         if (!senderTermStale) {
@@ -395,8 +390,8 @@ public class Server implements Runnable {
                         RequestVoteReply reply = null;
                         boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
 
-                        reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
-                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        reply = new RequestVoteReply(myId, this.myPersistentState.currentTerm, grantingVote);
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                     } else if (message instanceof RequestVoteReply) {
                         RequestVoteReply reply = (RequestVoteReply) message;
                         if (reply.voteGranted) {
@@ -444,7 +439,7 @@ public class Server implements Runnable {
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
             // Subtracting 1 makes it apparent that we want to send the entry
             // corresponding to the next available index
-            meta.nextIndex = (this.log.size() - 1) + 1;
+            meta.nextIndex = (this.myPersistentState.log.size() - 1) + 1;
             meta.matchIndex = -1;
         }
         Date lastHeartbeatTime = null;        
@@ -458,13 +453,13 @@ public class Server implements Runnable {
                 currTime = Date.from(Instant.now());
                 // null check allows us to send initial empty AppendEntriesRPCs upon election
                 if(lastHeartbeatTime==null) {
-                    broadcast(new AppendEntriesRequest(myId, this.currentTerm, -1, -1, null, this.commitIndex));
+                    broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
                     lastHeartbeatTime = Date.from(Instant.now());
                 }
                 // send regular heartbeat messages with log entries after a heartbeat interval has passed
                 // Proj2: add proper log entry (if needed) as argument into AppendEntriesRequest
                 if(currTime.getTime()-lastHeartbeatTime.getTime()>=HEARTBEAT_INTERVAL) {
-                    broadcast(new AppendEntriesRequest(myId, this.currentTerm, -1, -1, null, this.commitIndex));
+                    broadcast(new AppendEntriesRequest(myId, this.myPersistentState.currentTerm, -1, -1, null, this.commitIndex));
                     lastHeartbeatTime = Date.from(Instant.now());
                 }
             } else {
@@ -480,20 +475,20 @@ public class Server implements Runnable {
                     logMessage("about to read");
                     SocketChannel channel = (SocketChannel) key.channel();
                     Message message = (Message) RPCUtils.receiveMessage(channel, true);
-                    boolean myTermStale = message.term > this.currentTerm;
-                    boolean senderTermStale = message.term < this.currentTerm;
+                    boolean myTermStale = message.term > this.myPersistentState.currentTerm;
+                    boolean senderTermStale = message.term < this.myPersistentState.currentTerm;
                     processMessageTerm(message);
                     if (message instanceof AppendEntriesRequest) {
                         logMessage(message);
-                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.myPersistentState.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                     } else if (message instanceof RequestVoteRequest) {
                         logMessage(message);
                         RequestVoteReply reply = null;
                         boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
 
-                        reply = new RequestVoteReply(myId, this.currentTerm, grantingVote);
-                        RPCUtils.sendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                        reply = new RequestVoteReply(myId, this.myPersistentState.currentTerm, grantingVote);
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
                     } else if (message instanceof AppendEntriesReply) {
                         // Proj2: write logic to handle AppendEntries message (as leader)
                         AppendEntriesReply reply = (AppendEntriesReply) message;
