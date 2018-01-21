@@ -172,6 +172,7 @@ public class Server implements Runnable {
     // Helper logger that logs to a log4j2 logger instance
     private void logMessage(Object message) {
         myLogger.info(myId + " :: " + role + " :: " + message);
+        // System.out.println(myId + " :: " + role + " :: " + message);
     }
 
     // Compares the sender's term against ours
@@ -271,20 +272,21 @@ public class Server implements Runnable {
     private void followerListenAndRespond() throws IOException {
         int readyChannels = 0;
         long electionTimeout = 0;
-        Date beforeSelectTime = null;
         Date currTime = null;
+        Date lastTimeoutTime = Date.from(Instant.now());
         boolean resetTimeout = true;
         while (role==Server.ROLE.FOLLOWER) {
             if(resetTimeout) {
-                beforeSelectTime = Date.from(Instant.now());
+                lastTimeoutTime = Date.from(Instant.now());
                 electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
                 resetTimeout = false;
             }
-            logMessage("about to enter timeout");
-            readyChannels = listenerThread.readSelector.select(electionTimeout);
+            readyChannels = listenerThread.readSelector.selectNow();
             if (readyChannels == 0) {
-                role = Server.ROLE.CANDIDATE;
-                break;
+                if (Date.from(Instant.now()).getTime() - lastTimeoutTime.getTime() >= electionTimeout) {
+                    role = Server.ROLE.CANDIDATE;
+                    break;
+                }
             } else {
                 logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
@@ -319,11 +321,6 @@ public class Server implements Runnable {
 
                     keyIterator.remove();
                 }
-                if (!resetTimeout) {
-                    currTime = Date.from(Instant.now());
-                    electionTimeout -= currTime.getTime() - beforeSelectTime.getTime();
-                    beforeSelectTime = currTime;
-                }
             }
         }
     }
@@ -340,7 +337,7 @@ public class Server implements Runnable {
     private void candidateRunElection() throws IOException {
         int readyChannels = 0;
         long electionTimeout = 0;
-        Date beforeSelectTime = null;
+        Date lastTimeoutTime = null;
         Date currTime = null;
         boolean resetTimeout = true;
 
@@ -349,7 +346,7 @@ public class Server implements Runnable {
 
         while (role==Server.ROLE.CANDIDATE) {
             if(resetTimeout) {
-                beforeSelectTime = Date.from(Instant.now());
+                lastTimeoutTime = Date.from(Instant.now());
                 electionTimeout = ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1);
                 resetTimeout = false;
                 // Candidate-specific: Start Election
@@ -362,10 +359,11 @@ public class Server implements Runnable {
                                   -1 : this.log.get(lastLogIndex).term;
                 broadcast(new RequestVoteRequest(myId, currentTerm, lastLogIndex, lastLogTerm));
             }
-            logMessage("about to enter timeout");
-            readyChannels = listenerThread.readSelector.select(electionTimeout);
+            readyChannels = listenerThread.readSelector.selectNow();
             if (readyChannels == 0) {
-                resetTimeout = true;
+                if (Date.from(Instant.now()).getTime() - lastTimeoutTime.getTime() >= electionTimeout) {
+                    resetTimeout = true;
+                }
             } else {
                 logMessage("about to iterate over keys");
                 Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
@@ -418,11 +416,6 @@ public class Server implements Runnable {
                     }
 
                     keyIterator.remove();
-                }
-                if (!resetTimeout) {
-                    currTime = Date.from(Instant.now());
-                    electionTimeout -= currTime.getTime() - beforeSelectTime.getTime();
-                    beforeSelectTime = currTime;
                 }
             }
         }
