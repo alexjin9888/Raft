@@ -148,9 +148,13 @@ public class Server implements Runnable {
         }
     }
 
-    private void saveStateAndSendMessage(InetSocketAddress address, Message message) throws IOException {
-        this.myPersistentState.save();
-        RPCUtils.sendMessage(address, message);
+    private void saveStateAndSendMessage(InetSocketAddress address, Message message) {
+        try {
+            this.myPersistentState.save();
+            RPCUtils.sendMessage(address, message);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     // Helper function to send message to all other servers (excluding me)
@@ -505,5 +509,21 @@ public class Server implements Runnable {
                 }
             }
         }
+    }
+
+    public static void main(String[] args) {
+        if (args.length!=2) {
+            System.out.println("Usage: <myPortIndex> <port1>,<port2>,...");
+            System.exit(-1);
+        }
+
+        System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
+        HashMap<String, InetSocketAddress> serverAddressesMap = new HashMap<String, InetSocketAddress>();
+        String[] allPorts = args[1].split(",");
+        for (int i=0; i<allPorts.length; i++) {
+            serverAddressesMap.put("Server" + (i+1), new InetSocketAddress("localhost", Integer.parseInt(allPorts[i])));   
+        }
+        Server myServer = new Server("Server" + args[0], serverAddressesMap);
+        myServer.run();
     }
 }
