@@ -25,7 +25,7 @@ public class RPCUtils {
     public static Message receiveMessage(SocketChannel channel, boolean closeChannel) throws IOException {
         Object message = null;
         // Create a buffer to store request data
-        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         ByteArrayOutputStream messageBytes = new ByteArrayOutputStream();
 
         int bytesRead = channel.read(buffer);
@@ -65,7 +65,7 @@ public class RPCUtils {
         SocketChannel socketChannel = SocketChannel.open(address);
         socketChannel.configureBlocking(false);
         
-        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         ObjectOutputStream out = null;
         byte[] messageByteArray = null;
