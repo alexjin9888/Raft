@@ -48,12 +48,13 @@ import java.util.HashMap;
  */
 public class Server implements Runnable {
     public abstract class Role {
+        public abstract void initialize() throws IOException;
         public abstract void resetTimeout();
         public abstract void performTimeoutAction() throws IOException;
-        public abstract void reactToSenderTerm();
+        public abstract void reactToSenderTerm() throws IOException;
     }
     class Follower extends Role {
-        public Follower() {
+        public void initialize() throws IOException {
             this.resetTimeout();
         }
         public void resetTimeout() {
@@ -61,15 +62,20 @@ public class Server implements Runnable {
         }
         public void performTimeoutAction() throws IOException {
             Server.this.role = Server.this.new Candidate();
+            Server.this.role.initialize();
         }
         public void reactToSenderTerm() {
             this.resetTimeout();
+        }
+        @Override
+        public String toString() {
+            return "Follower";
         }
     }
     class Candidate extends Role {
         private int votesReceived;
 
-        public Candidate() throws IOException {
+        public void initialize() throws IOException {
             this.performTimeoutAction();
             this.resetTimeout();
         }
@@ -89,10 +95,11 @@ public class Server implements Runnable {
             broadcast(new RequestVoteRequest(myId, Server.this.myPersistentState.currentTerm, lastLogIndex, lastLogTerm));
         }
 
-        public void reactToSenderTerm() {
+        public void reactToSenderTerm() throws IOException {
             // If the leader's term is at least as large as the candidate's current term, then the candidate
             // recognizes the leader as legitimate and returns to follower state.
             Server.this.role = Server.this.new Follower();
+            Server.this.role.initialize();
         }
 
         public void processRequestVoteReply(RequestVoteReply reply) throws IOException {
@@ -101,11 +108,16 @@ public class Server implements Runnable {
             }
             if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
                 Server.this.role = Server.this.new Leader();
+                Server.this.role.initialize();
             }
+        }
+        @Override
+        public String toString() {
+            return "Candidate";
         }
     }
     class Leader extends Role {
-        public Leader() throws IOException {
+        public void initialize() throws IOException {
             // initialize volatile state on leaders
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
                 // Subtracting 1 makes it apparent that we want to send the entry
@@ -150,7 +162,10 @@ public class Server implements Runnable {
                 }
             }
         }
-
+        @Override
+        public String toString() {
+            return "Leader";
+        }
     }
     // Magical constants
     private static final int HEARTBEAT_INTERVAL = 1000;
@@ -212,7 +227,7 @@ public class Server implements Runnable {
         }
 
         // Start a thread to accept connections and add them to read selector
-        listenerThread = new ListenerThread(myAddress);
+        listenerThread = new ListenerThread(myAddress, myLogger);
         listenerThread.start();
         
         timer = new Timer();
@@ -288,6 +303,7 @@ public class Server implements Runnable {
                             this.myPersistentState.currentTerm = message.term;
                             this.myPersistentState.votedFor = null;
                             this.role = this.new Follower();
+                            Server.this.role.initialize();
                         }
                         if (message instanceof AppendEntriesRequest) {
                             logMessage(message);
@@ -296,7 +312,7 @@ public class Server implements Runnable {
                                 this.role.reactToSenderTerm();
                             }
                             AppendEntriesReply reply = new AppendEntriesReply(myId, this.myPersistentState.currentTerm, processAppendEntriesRequest((AppendEntriesRequest) message, senderTermStale));
-                            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
                         } else if (message instanceof RequestVoteRequest) {
                             logMessage(message);
                             boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
@@ -305,7 +321,7 @@ public class Server implements Runnable {
                                 this.role.resetTimeout();
                             }
                             RequestVoteReply reply = new RequestVoteReply(myId, this.myPersistentState.currentTerm, grantingVote);
-                            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId).address, reply);
+                            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
                         } else if (message instanceof AppendEntriesReply) {
                             if (this.role instanceof Leader) {
                                 ((Leader) this.role).processAppendEntriesReply((AppendEntriesReply) message);
@@ -326,13 +342,14 @@ public class Server implements Runnable {
         }
     }
 
-    private void saveStateAndSendMessage(InetSocketAddress address, Message message) {
+    private void saveStateAndSendMessage(ServerMetadata recipientMeta, Message message) {
         try {
             this.myPersistentState.save();
-            NetworkUtils.sendMessage(address, message);
+            NetworkUtils.sendMessage(recipientMeta.address, message);
         } catch (IOException e) {
             // Pass to fail silently
-            e.printStackTrace();
+            // e.printStackTrace();
+            myLogger.info(myId + " :: Connection to " + recipientMeta.id + " refused.");
         }
     }
 
@@ -342,7 +359,7 @@ public class Server implements Runnable {
         logMessage("broadcasting");
         
         for (ServerMetadata meta : otherServersMetadataMap.values()) {
-            saveStateAndSendMessage(meta.address, message);
+            saveStateAndSendMessage(meta, message);
         }
     }
 

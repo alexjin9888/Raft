@@ -6,13 +6,14 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Set;
 import java.util.Iterator;
+import org.apache.logging.log4j.Logger;
 
 public class ListenerThread extends Thread {
     private ServerSocketChannel acceptChannel;
     private Selector acceptSelector;
     public Selector readSelector; // register channels to read from using this selector
     
-    public ListenerThread(InetSocketAddress address) {
+    public ListenerThread(InetSocketAddress address, Logger myLogger) {
         try {
             acceptChannel = ServerSocketChannel.open();
             acceptChannel.configureBlocking(false);
@@ -22,16 +23,13 @@ public class ListenerThread extends Thread {
             acceptChannel.register(acceptSelector, SelectionKey.OP_ACCEPT);
             readSelector = Selector.open();
         } catch (IOException e) {
-            e.printStackTrace();
+            if (e.getMessage().equals("Address already in use")) {
+                myLogger.info("Address " + address + " already occupied!");
+            }
+            System.exit(-1);
+            // e.printStackTrace();
         }
     }
-    
-//    public void resetReadSelector() throws IOException {
-//        synchronized(this) {
-//            readSelector.close();
-//            readSelector = Selector.open();
-//        }
-//    }
 
     public void run() {
         try {
@@ -58,8 +56,5 @@ public class ListenerThread extends Thread {
         SocketChannel clientChannel = acceptChannel.accept();
         clientChannel.configureBlocking(false);
         clientChannel.register(readSelector, SelectionKey.OP_READ);
-//        synchronized(this) {
-//            clientChannel.register(readSelector, SelectionKey.OP_READ);
-//        }
     }
 }
