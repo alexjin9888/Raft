@@ -26,12 +26,12 @@ public class ListenerThread extends Thread {
         }
     }
     
-    public void resetReadSelector() throws IOException {
-        synchronized(this) {
-            readSelector.close();
-            readSelector = Selector.open();
-        }
-    }
+//    public void resetReadSelector() throws IOException {
+//        synchronized(this) {
+//            readSelector.close();
+//            readSelector = Selector.open();
+//        }
+//    }
 
     public void run() {
         try {
@@ -57,8 +57,9 @@ public class ListenerThread extends Thread {
     private void acceptConnection() throws IOException {
         SocketChannel clientChannel = acceptChannel.accept();
         clientChannel.configureBlocking(false);
-        synchronized(this) {
-            clientChannel.register(readSelector, SelectionKey.OP_READ);
-        }
+        clientChannel.register(readSelector, SelectionKey.OP_READ);
+//        synchronized(this) {
+//            clientChannel.register(readSelector, SelectionKey.OP_READ);
+//        }
     }
 }
