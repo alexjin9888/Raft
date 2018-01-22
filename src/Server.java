@@ -370,7 +370,7 @@ public class Server implements Runnable {
 
     // Helper logger that logs to a log4j2 logger instance
     private void logMessage(Object message) {
-        myLogger.info(myId + " :: " + role + " :: " + message);
+        myLogger.info(myId + " :: term=" + this.myPersistentState.currentTerm + " :: " + role + " :: " + message);
     }
 
     // Checks if we grant the sender our vote ($5.2 Leader election)
