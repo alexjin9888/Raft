@@ -31,7 +31,7 @@ import java.util.HashMap;
  *  majority, the state machine is fully operational.
  *
  * It has the following features:
- *   1) leader election (project 1) and log replication (TODO project 2)
+ *   1) leader election (Proj1) and log replication (Proj2)
  *   2) Dynamic membership change
  *      a) Upon initialization, Servers switch to FOLLOWER state
  *      b) Elections occur automatically once election timeout is hit
@@ -172,7 +172,6 @@ public class Server implements Runnable {
     private static final int MIN_ELECTION_TIMEOUT = 3000;
     private static final int MAX_ELECTION_TIMEOUT = 5000;
 
-    // TODO Add detailed comments for all instance variables
     private String myId; // Unique identification (Id) per server
     private String leaderId; // current leader's Id
     private InetSocketAddress myAddress; // Unique address per server
@@ -210,7 +209,7 @@ public class Server implements Runnable {
     //      meta-data into a new HashMap and store a reference to it.
     //   2) change our role to FOLLOWER.
     //   3) create a socket for all incoming communications
-    //   4) initialize and load (TODO project 2) variables
+    //   4) initialize and load (Proj2) variables
     public Server(String serverId, HashMap<String, InetSocketAddress> serverAddressesMap) {
         this.leaderId = null;
         this.myId = serverId;
@@ -431,7 +430,6 @@ public class Server implements Runnable {
         if (candidateN<=this.commitIndex) {
             return false;
         }
-        // TODO ask ousterhout about a better name for count
         // count is the # of servers with at least candidateN log entries
         // We include the leader in the count because its log index is >= candidateN
         int count = 1;

@@ -9,14 +9,11 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
-// TODO figure how to determine sufficient # of bytes to allocate for all byte buffers
-// TODO think about this: what happens if the sender goes down before we read the
-//        entire message object?
-// TODO Consider appropriate behavior if the recipient goes down
-//   before we write out the entire contents of the buffer
 public class NetworkUtils {
 
     // size of buffer for reading/writing from/to a server (in bytes)
+    // Proj2: currently, we assume all messages are <= 1024 bytes
+    // Figure out a better way to determine the right buffer size
     private static final int BUFFER_SIZE = 1024;
 
     // Reads a full message from a channel
