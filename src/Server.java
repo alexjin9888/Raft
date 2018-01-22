@@ -237,6 +237,12 @@ public class Server implements Runnable {
         this.lastApplied = -1;
         
         role = this.new Follower();
+        try {
+            this.role.initialize();
+        } catch (IOException e) {
+            // This case should never occur during the follower role's initialization
+            assert(false);
+        }
 
         // Debug
         myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
