@@ -61,8 +61,7 @@ public class Server implements Runnable {
             timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
         public void performTimeoutAction() throws IOException {
-            Server.this.role = Server.this.new Candidate();
-            Server.this.role.initialize();
+            Server.this.setRole(Server.this.new Candidate());
         }
         public void reactToSenderTerm() {
             this.resetTimeout();
@@ -92,14 +91,19 @@ public class Server implements Runnable {
             // lastLogTerm = -1 means there are no log entries
             int lastLogTerm = lastLogIndex < 0 ?
                 -1 : Server.this.myPersistentState.log.get(lastLogIndex).term;
-            broadcast(new RequestVoteRequest(myId, Server.this.myPersistentState.currentTerm, lastLogIndex, lastLogTerm));
+
+            logMessage("broadcasting RequestVotes requests");
+            Message message = new RequestVoteRequest(myId, Server.this.myPersistentState.currentTerm, lastLogIndex, lastLogTerm);
+
+            for (ServerMetadata meta : otherServersMetadataMap.values()) {
+                saveStateAndSendMessage(meta, message);
+            }
         }
 
         public void reactToSenderTerm() throws IOException {
             // If the leader's term is at least as large as the candidate's current term, then the candidate
             // recognizes the leader as legitimate and returns to follower state.
-            Server.this.role = Server.this.new Follower();
-            Server.this.role.initialize();
+            Server.this.setRole(Server.this.new Follower());
         }
 
         public void processRequestVoteReply(RequestVoteReply reply) throws IOException {
@@ -107,8 +111,7 @@ public class Server implements Runnable {
                 votesReceived += 1;
             }
             if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
-                Server.this.role = Server.this.new Leader();
-                Server.this.role.initialize();
+                Server.this.setRole(Server.this.new Leader());
             }
         }
         @Override
@@ -126,7 +129,13 @@ public class Server implements Runnable {
                 meta.matchIndex = -1;
             }
             // send initial empty AppendEntriesRequests upon promotion to leader
-            broadcast(new AppendEntriesRequest(myId, Server.this.myPersistentState.currentTerm, -1, -1, null, Server.this.commitIndex));
+            logMessage("broadcasting initial heartbeat messages");
+
+            // Proj2: see if initial heartbeat messages need to be tailored to the target servers in any way
+            Message message = new AppendEntriesRequest(myId, Server.this.myPersistentState.currentTerm, -1, -1, null, Server.this.commitIndex);
+            for (ServerMetadata meta : otherServersMetadataMap.values()) {
+                saveStateAndSendMessage(meta, message);
+            }
             this.resetTimeout();
         }
         
@@ -135,12 +144,15 @@ public class Server implements Runnable {
         }
 
         public void performTimeoutAction() throws IOException {
-            // Proj2: we may not be able to broadcast the same message to all servers,
-            //   and so we may need to change the interface of broadcast(..), or use a
-            //   different method to send server-tailored messages to all servers.
-            // Proj2: add proper log entry (if needed) as argument into AppendEntriesRequest
-            // send regular heartbeat messages with server-tailored log entries after a heartbeat interval has passed
-            broadcast(new AppendEntriesRequest(myId, Server.this.myPersistentState.currentTerm, -1, -1, null, Server.this.commitIndex));
+            // send regular heartbeat messages with zero or more log entries after a heartbeat interval has passed
+            logMessage("broadcasting heartbeat messages");
+
+            for (ServerMetadata meta : otherServersMetadataMap.values()) {
+                // Proj2: send server-tailored messages to each server
+                // Proj2: add suitable log entry (if needed) as argument into AppendEntriesRequest
+                Message message = new AppendEntriesRequest(myId, Server.this.myPersistentState.currentTerm, -1, -1, null, Server.this.commitIndex);
+                saveStateAndSendMessage(meta, message);
+            }
         }
         
         public void reactToSenderTerm() {
@@ -236,9 +248,9 @@ public class Server implements Runnable {
         this.commitIndex = -1;
         this.lastApplied = -1;
         
-        role = this.new Follower();
+        
         try {
-            this.role.initialize();
+            this.setRole(this.new Follower());
         } catch (IOException e) {
             // This case should never occur during the follower role's initialization
             assert(false);
@@ -307,8 +319,7 @@ public class Server implements Runnable {
                         if (myTermStale) {
                             this.myPersistentState.currentTerm = message.term;
                             this.myPersistentState.votedFor = null;
-                            this.role = this.new Follower();
-                            Server.this.role.initialize();
+                            this.setRole(this.new Follower());
                         }
                         if (message instanceof AppendEntriesRequest) {
                             logMessage(message);
@@ -347,6 +358,16 @@ public class Server implements Runnable {
         }
     }
 
+    private void setRole(Role role) throws IOException {
+        this.role = role;
+        // Note: We need to run some initialization code
+        // that is separate from the initialization done in the
+        // constructor of a role instance, since the code in
+        // initialize() may access this.role and expect an
+        // up-to-date value.
+        this.role.initialize();
+    }
+
     private void saveStateAndSendMessage(ServerMetadata recipientMeta, Message message) {
         try {
             this.myPersistentState.save();
@@ -355,16 +376,6 @@ public class Server implements Runnable {
             // Pass to fail silently
             // e.printStackTrace();
             myLogger.info(myId + " :: Connection to " + recipientMeta.id + " refused.");
-        }
-    }
-
-    // Helper function to send message to all other servers (excluding me)
-    private void broadcast(Message message) throws IOException {
-
-        logMessage("broadcasting");
-        
-        for (ServerMetadata meta : otherServersMetadataMap.values()) {
-            saveStateAndSendMessage(meta, message);
         }
     }
 
