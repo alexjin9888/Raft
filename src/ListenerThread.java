@@ -24,7 +24,7 @@ public class ListenerThread extends Thread {
             readSelector = Selector.open();
         } catch (IOException e) {
             if (e.getMessage().equals("Address already in use")) {
-                myLogger.info("Address " + address + " already occupied!");
+                myLogger.info("address " + address + " already in use");
             }
             System.exit(-1);
             // e.printStackTrace();
