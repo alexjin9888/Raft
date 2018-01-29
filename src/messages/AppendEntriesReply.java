@@ -1,19 +1,17 @@
 package messages;
 /**
  * Reply to AppendEntriesRequest
- *
  */
 @SuppressWarnings("serial")
 public class AppendEntriesReply extends Message {
     /** 
-     * true if  follower contained entry matching prevLogIndex and prevLogTerm
-     * 
+     * true iff follower contained entry matching prevLogIndex and prevLogTerm
      */
     public boolean success;
     /**
      * @param serverId ID of server sending the reply
      * @param term     my current term
-     * @param success  result of AppendEntriesRequest
+     * @param success  see above
      */
     public AppendEntriesReply(String serverId, int term, boolean success) {
         super();

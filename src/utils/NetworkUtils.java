@@ -8,8 +8,7 @@ import java.nio.channels.SocketChannel;
 import messages.Message;
 
 /**
- * Handles sending and recieving messages over socket channels
- *
+ * Handles sending and receiving messages over socket channels
  */
 public class NetworkUtils {
 
@@ -25,7 +24,6 @@ public class NetworkUtils {
      * @param message      message to be sent
      * @throws IOException
      * Sends a full message from a channel
-     * Closes the channel afterwards
      * If we receive an IOException while trying to establish a connection
      * (e.g., target server is down), or while writing (e.g., target server goes
      * down while transmitting data), then we throw the error for the method

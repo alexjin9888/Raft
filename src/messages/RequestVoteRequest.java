@@ -1,14 +1,12 @@
 package messages;
 /**
  * Initiated and sent by candidates to gather votes ($5.2)
- *
  */
 @SuppressWarnings("serial")
 public class RequestVoteRequest extends Message {
-    /**
-     * See RAFT figure 2 for explanation of these variables
-     */
+    // index of candidate’s last log entry (§5.4)
     public int lastLogIndex;
+    // term of candidate’s last log entry (§5.4)
     public int lastLogTerm;
 
     /**

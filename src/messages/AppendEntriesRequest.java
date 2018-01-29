@@ -8,12 +8,14 @@ import misc.LogEntry;
  */
 @SuppressWarnings("serial")
 public class AppendEntriesRequest extends Message {
-    /**
-     * See RAFT figure 2 for explanation of these variables
-     */
+    // index of log entry immediately preceding new ones
     public int prevLogIndex;
+    // term of prevLogIndex entry
     public int prevLogTerm;
+    // log entry to store (empty for heartbeat; may send more than one for 
+    //                     efficiency)
     public LogEntry entry;
+    // leader’s commitIndex
     public int leaderCommit;
     /**
      * @param serverId     ID of the leader who is sending this request

@@ -6,20 +6,12 @@ import java.util.Date;
  * Timer class that implements timeout logic for
  *   1) Election Timeout for Followers and Candidates
  *   2) Heartbeat Timeout for leaders
- *   See RAFT spec for mroe detailed descriptions
- *
+ *   See RAFT spec for more detailed descriptions
  */
 public class Timer {
-    /**
-     * lastTimeoutTime
-     * timeoutInterval different for Election Timeout and Heartbeat Timeout
-     */
     private Date lastTimeoutTime;
     private int timeoutInterval;
 
-    /**
-     * Constructor
-     */
     public Timer() {
         super();
         this.lastTimeoutTime = null;
@@ -27,15 +19,15 @@ public class Timer {
     }
 
     /**
-     * @param timeoutInterval Either Election Timeout or Heartbeat Timeout
+     * @param timeoutInterval time we will wait until next timeout
      */
     public void reset(int timeoutInterval) {
         this.lastTimeoutTime = Date.from(Instant.now());
         this.timeoutInterval = timeoutInterval;
     }
     
-    /**
-     * Checks if we need to perform an election or a heartbeat message
+    /** 
+     * @return whether timeoutInterval has passed since lastTimeoutTime
      */
     public boolean timeIsUp() {
         if (lastTimeoutTime == null) {

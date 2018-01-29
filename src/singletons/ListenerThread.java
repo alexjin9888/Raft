@@ -11,17 +11,16 @@ import java.util.Iterator;
 /**
  * A thread that handles accepts
  * When a server boots up, it creates a server socket channel using this class
- * and polls for incoming connections
- *
+ * and polls for incoming connections. After establishing a connection, it
+ * exposes a read selector which we can use to query read-ready channels that
+ * have data to read.
  */
 public class ListenerThread extends Thread {
-    /**
-     * acceptChannel  The channel for incoming messages
-     * acceptSelector Selector for all accepts
-     * readSelector   Register channels to read from using this selector
-     */
+    // acceptChannel  The channel for incoming messages
     private ServerSocketChannel acceptChannel;
+    // acceptSelector Selector for all accepts
     private Selector acceptSelector;
+    // readSelector   Register channels to read from using this selector
     private Selector readSelector;
     
     /**
@@ -42,7 +41,9 @@ public class ListenerThread extends Thread {
 
     /* (non-Javadoc)
      * @see java.lang.Thread#run()
-     * Continuos poll of incoming connections
+     * Starts an event loop on the main thread where we:
+     * 1) Continuously poll of incoming connections.
+     * 2) Register read-ready channel when a connection is established.
      */
     public void run() {
         try {
@@ -74,7 +75,6 @@ public class ListenerThread extends Thread {
 
     /**
      * Helper function to accept an incoming connection in non-blocking mode
-     * We then get ready to read the incoming message
      * @throws IOException
      */
     private void acceptConnection() throws IOException {

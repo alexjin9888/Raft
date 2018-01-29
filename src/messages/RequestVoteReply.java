@@ -1,13 +1,10 @@
 package messages;
 /**
  * Reply to RequestVote request
- *
  */
 @SuppressWarnings("serial")
 public class RequestVoteReply extends Message {
-    /**
-     * See RAFT figure 2 for explanation of these variables
-     */
+    // For the same election term, grant vote once first come first serve
     public boolean voteGranted;
 
     /**
