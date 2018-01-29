@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
@@ -22,77 +23,72 @@ import singletons.PersistentState;
 import singletons.Timer;
 import utils.NetworkUtils;
 
-/* 
- * The Server class implements features as per the RAFT consensus protocol.
- *  Raft defines a distributed consensus algorithm for maintaining a shared
- *  state machine. Each Raft node maintains a complete copy of the state
- *  machine. Cluster nodes elect a leader who collects and distributes updates
- *  and provides for consistent reads. As long as as a node is part of a
- *  majority, the state machine is fully operational.
- *
- * It has the following features:
- *   1) leader election (Proj1) and log replication (Proj2)
- *   2) Dynamic membership change
- *      a) Upon initialization, Servers switch to FOLLOWER state
- *      b) Elections occur automatically once election timeout is hit
- *      c) Upon successful leader election, client communications are directed
- *         to the leader.
- *   3) Persistent data-storage is implemented so that accidental server
- *      failures can be restored efficiently
- *   4) Cluster will be fully functional as long as a majority of the servers
- *      in the cluster are running and respond promptly to requests.
- *
- *
- *
- *
+
+/**
+ * Each server in the Raft cluster should create and maintain its own
+ * Server instance. Each instance runs the Raft protocol.
  */
 public class Server implements Runnable {
-    
+
     private static final int HEARTBEAT_INTERVAL = 1000;
+
+    // The election timeout is a random variable with the distribution
+    // Uniform(min. election timeout, max election timeout).
     private static final int MIN_ELECTION_TIMEOUT = 3000;
     private static final int MAX_ELECTION_TIMEOUT = 5000;
 
-    private String myId; // Unique identification (Id) per server
+    private String myId; // unique id
     @SuppressWarnings("unused")
-    private String leaderId; // current leader's Id
-    private InetSocketAddress myAddress; // Unique address per server
-    // * A HashMap that maps each server (excluding myself) to its
-    // *   1) Id
-    // *   1) Address
-    // *   1) nextIndex (only applicable for leader)
-    // *   1) matchIndex (only applicable for leader)
+    private String leaderId; // current leader's id
+    private InetSocketAddress myAddress; // unique address
+
+    // A map that maps server id to a server metadata object. This map
+    // enables us to read properties and keep track of state
+    // corresponding to other servers in the Raft cluster.
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
-    // private ROLE role; // my role, one of FOLLOWER, CANDIDATE, or LEADER
 
-    private Role role;
-    // PersistentStorage
-    private PersistentState persistentState;
-    
+    /*
+     * Singletons:
+     * * Timer instance is used to manage time for election and
+     *   heartbeat timeouts.
+     * 
+     * * PersistentState instance is used to read and write server
+     *   state that should be persisted onto disk.
+     * 
+     * * ListenerThread instance spins up a thread that starts+runs
+     *   a listener channel for other servers to send requests to. We
+     *   can poll for read events by accessing what this instance
+     *   exposes.
+     * 
+     * * ExecutorService instance manages a thread pool for us, which
+     *   we use to send concurrent requests to other servers.
+     */
     private Timer timer;
+    private PersistentState persistentState;
     private ListenerThread listenerThread;
-    private ExecutorService networkService;
+    private ExecutorService threadPoolService;
 
-    // Volatile State on all servers
-    // * index of highest log entry known to be committed (initialized to 0,
-    //   increases monotonically)
+    private Role role; // One of follower, candidate, leader
+
+    /*
+     * Log-specific volatile state:
+     * * commitIndex - index of highest log entry known to be committed (initialized to 0, increases monotonically)
+     * * lastApplied - index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+     */
     private int commitIndex;
-    // * index of highest log entry applied to state machine (initialized to 0,
-    //   increases monotonically)
     @SuppressWarnings("unused")
     private int lastApplied;
 
     // Tracing and debugging logger
-    // see: https://logging.apache.org/log4j/2.0/manual/api.html
+    // see: https://logging.apache.org/log4j/2.x/manual/api.html
     private static final Logger myLogger = LogManager.getLogger(Server.class);
 
-    // Initialize a server with its Id and a HashMap between servers and their
-    // meta-data.
-    // Upon initialization, we do 4 things:
-    //   1) store our own information in our class, and turn other servers'
-    //      meta-data into a new HashMap and store a reference to it.
-    //   2) change our role to FOLLOWER.
-    //   3) create a socket for all incoming communications
-    //   4) initialize and load (Proj2) variables
+
+    /**
+     * @param id server id
+     * @param serverAddressesMap map that maps server id to address.
+     *        Contains entries for all servers in Raft cluster.
+     */
     public Server(String id, HashMap<String, InetSocketAddress> serverAddressesMap) {
         myId = id;
         leaderId = null;
@@ -100,21 +96,20 @@ public class Server implements Runnable {
         for (HashMap.Entry<String, InetSocketAddress> entry : serverAddressesMap.entrySet()) {
             String elemId = entry.getKey();
             InetSocketAddress elemAddress = entry.getValue();  
-            
+
             if (elemId.equals(this.myId)) {
                 myAddress = elemAddress;
             } else {
                 this.otherServersMetadataMap.put(elemId, new ServerMetadata(elemId, elemAddress));
             }
         }
-        
+
         timer = new Timer();
 
-        // Start a thread to accept connections and add them to read selector
         try {
-            updateRole(new Follower());
             persistentState = new PersistentState(myId);
             listenerThread = new ListenerThread(myAddress);
+            transitionRole(new Follower());
         } catch (IOException e) {
             if (e.getMessage().equals("Address already in use")) {
                 logMessage("address " + myAddress + " already in use");
@@ -124,7 +119,7 @@ public class Server implements Runnable {
             System.exit(1);
         }
         listenerThread.start();
-        networkService = Executors.newFixedThreadPool(this.otherServersMetadataMap.size());
+        threadPoolService = Executors.newFixedThreadPool(this.otherServersMetadataMap.size());
 
         this.commitIndex = -1;
         this.lastApplied = -1;
@@ -133,95 +128,64 @@ public class Server implements Runnable {
         logMessage("successfully booted");
     }
 
-    // All servers shall listen and respond to incoming requests. Below is a
-    // summary of how each role should behave:
-    //**************************************************************************
-    //* Follower does the following 2 tasks:                                   *
-    //*   1) Respond to requests from candidates and leaders                   *
-    //*   2) If election timeout elapses without receiving a valid             *
-    //*      AppendEntries request from current leader or granting vote to     *
-    //*      candidate: convert to candidate                                   *
-    //* Candidate does the following 4 tasks:                                  *
-    //*   1) On conversion to candidate, start election:                       *
-    //*      a) Increment currentTerm                                          *
-    //*      b) Vote for self                                                  *
-    //*      c) Reset election timer                                           *
-    //*      d) Send RequestVote requests to all other servers                 *
-    //*   2) If votes received from majority of servers: become leader         *
-    //*   3) If AppendEntries request received from new leader: convert to     *
-    //*      follower                                                          *
-    //*   4) If election timeout elapses: start new election                   *
-    //* Leader does the following 4 tasks:                                     *
-    //*   1) Upon election: send initial empty AppendEntries requests          *
-    //*      (heartbeat) to each server; repeat during idle periods to prevent *
-    //*      election timeouts (§5.2)                                          *
-    //*   2) If command received from client: append entry to local log,       *
-    //*      respond after entry applied to state machine (§5.3)               *
-    //*   3) If last log index ≥ nextIndex for a follower: send AppendEntries  *
-    //*      requests with log entries starting at nextIndex                   *
-    //*      a) If successful: update nextIndex and matchIndex for follower    *
-    //*         (§5.3)                                                         *
-    //*      b) If AppendEntries fails because of log inconsistency: decrement *
-    //*         nextIndex and retry (§5.3)                                     *
-    //*   4) If there exists an N such that N > commitIndex, a majority of     *
-    //*      matchIndex[i] ≥ N, and log[N].term == currentTerm:                *
-    //*      set commitIndex = N (§5.3, §5.4).                                 *
-    //**************************************************************************
+    /* 
+     * Starts an event loop on the main thread where we:
+     * 1) Perform timeout actions depending on remaining time and role.
+     * 2) Process incoming requests as they arrive.
+     */
     public void run() {
+        Selector readSelector = listenerThread.getReadSelector();
         try {
             while (true) {
                 if (timer.timeIsUp()) {
                     this.role.performTimeoutAction();
                     this.role.resetTimeout();
                 }
-                if (listenerThread.readSelector.selectNow() == 0) {
-                    continue;
-                } else {
-                    Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
 
-                    Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+                readSelector.selectNow();
+                Set<SelectionKey> selectedKeys = readSelector.selectedKeys();
+                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
-                    while(keyIterator.hasNext()) {
-                        logMessage("about to read");
-                        SelectionKey key = keyIterator.next();
-                        SocketChannel channel = (SocketChannel) key.channel();
-                        Message message = (Message) NetworkUtils.receiveMessage(channel, true);
-                        logMessage("received " + message);
-                        boolean myTermStale = message.term > this.persistentState.currentTerm;
-                        boolean senderTermStale = message.term < this.persistentState.currentTerm;
-                        if (myTermStale) {
-                            this.persistentState.currentTerm = message.term;
-                            this.persistentState.votedFor = null;
-                            this.updateRole(new Follower());
-                        }
-                        if (message instanceof AppendEntriesRequest) {
-                            if (!senderTermStale) {
-                                this.role.processValidityOfAppendEntriesRequest();
-                            }
-                            boolean success = processEntries((AppendEntriesRequest) message, senderTermStale);
-                            AppendEntriesReply reply = new AppendEntriesReply(myId, this.persistentState.currentTerm, success);
-                            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
-                        } else if (message instanceof RequestVoteRequest) {
-                            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
-                            if (grantingVote) {
-                                assert(this.role instanceof Follower);
-                                this.role.resetTimeout();
-                            }
-                            RequestVoteReply reply = new RequestVoteReply(myId, this.persistentState.currentTerm, grantingVote);
-                            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
-                        } else if (message instanceof AppendEntriesReply) {
-                            if (this.role instanceof Leader) {
-                                ((Leader) this.role).processAppendEntriesReply((AppendEntriesReply) message);
-                            }
-                        } else if (message instanceof RequestVoteReply) {
-                            if (this.role instanceof Candidate) {
-                                ((Candidate) this.role).processRequestVoteReply((RequestVoteReply) message);
-                            }
-                        } else {
-                            assert(false);
-                        }
-                        keyIterator.remove();
+                while(keyIterator.hasNext()) {
+                    logMessage("about to read");
+                    SelectionKey key = keyIterator.next();
+                    SocketChannel channel = (SocketChannel) key.channel();
+                    Message message = (Message) NetworkUtils.receiveMessage(channel, true);
+                    logMessage("received " + message);
+                    boolean myTermStale = message.term > this.persistentState.currentTerm;
+                    boolean senderTermStale = message.term < this.persistentState.currentTerm;
+                    if (myTermStale) {
+                        this.persistentState.currentTerm = message.term;
+                        this.persistentState.votedFor = null;
+                        this.transitionRole(new Follower());
                     }
+                    if (message instanceof AppendEntriesRequest) {
+                        if (!senderTermStale) {
+                            this.role.processValidityOfAppendEntriesRequest();
+                        }
+                        boolean success = processEntries((AppendEntriesRequest) message, senderTermStale);
+                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.persistentState.currentTerm, success);
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
+                    } else if (message instanceof RequestVoteRequest) {
+                        boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
+                        if (grantingVote) {
+                            assert(this.role instanceof Follower);
+                            this.role.resetTimeout();
+                        }
+                        RequestVoteReply reply = new RequestVoteReply(myId, this.persistentState.currentTerm, grantingVote);
+                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
+                    } else if (message instanceof AppendEntriesReply) {
+                        if (this.role instanceof Leader) {
+                            ((Leader) this.role).processAppendEntriesReply((AppendEntriesReply) message);
+                        }
+                    } else if (message instanceof RequestVoteReply) {
+                        if (this.role instanceof Candidate) {
+                            ((Candidate) this.role).processRequestVoteReply((RequestVoteReply) message);
+                        }
+                    } else {
+                        assert(false);
+                    }
+                    keyIterator.remove();
                 }
             }
         } catch (IOException e) {
@@ -229,13 +193,22 @@ public class Server implements Runnable {
         }
     }
 
-    private void updateRole(Role role) throws IOException {
+    /**
+     * Changes the role of the server instance.
+     * Depending on new role, there may be some post-transition
+     * behavior that will need to be run.
+     * @param role new role that the server instance transitions to. 
+     * @throws IOException
+     */
+    private void transitionRole(Role role) throws IOException {
         this.role = role;
 
         if (this.role instanceof Candidate) {
+            // Start an election upon transition to candidate.
             this.role.performTimeoutAction();
         } else if (this.role instanceof Leader) {
-            // send initial empty AppendEntriesRequests upon promotion to leader
+            // send initial empty AppendEntries requests upon
+            // transition to leader.
             logMessage("broadcasting initial heartbeat messages");
 
             // Proj2: see if initial heartbeat messages need to be
@@ -248,13 +221,21 @@ public class Server implements Runnable {
                 saveStateAndSendMessage(meta, message);
             }
         }
-        
+
         this.role.resetTimeout();
     }
 
+    /**
+     * Wrapper around NetworkUtils.sendMessage that enforces the
+     * invariant that we save persistent state to disk before sending
+     * any network requests to recipients.
+     * @param recipientMeta recipient metadata
+     * @param message message that we want to send to recipient
+     * @throws IOException
+     */
     private void saveStateAndSendMessage(ServerMetadata recipientMeta, Message message) throws IOException {
         this.persistentState.save();
-        networkService.submit(() -> {
+        threadPoolService.submit(() -> {
             try {
                 NetworkUtils.sendMessage(recipientMeta.address, message);
             } catch (IOException e) {
@@ -267,82 +248,117 @@ public class Server implements Runnable {
         });
     }
 
-    // Helper logger that logs to a log4j2 logger instance
+    /**
+     * Wrapper around info logging that makes sure our logs are
+     * annotated with server-specific properties of interest.
+     * @param message any message that we wish to log
+     */
     private void logMessage(Object message) {
         myLogger.info(myId + " :: term=" + this.persistentState.currentTerm + " :: " + role + " :: " + message);
     }
 
-    // Processes an AppendEntries request from leader ($5.3 Log replication)
-    // If conflicts exist, we delete our record up to the conflicting one
-    // Otherwise add new entries to our log
-    // Update commitIndex when necessary
-    // Returns whether follower contained entry matching prevLogIndex and prevLogTerm
+    /**
+     * Processes an AppendEntries request from a leader.
+     * @param message data corresponding to AppendEntries request
+     * @param senderTermStale tells you whether sender term is stale
+     * @return true iff sender term is not stale and recipient log
+     *         contained entry matching prevLogIndex and prevLogTerm
+     */
     private boolean processEntries(AppendEntriesRequest message, boolean senderTermStale) {
         if (senderTermStale) {
             return false;
-        } else {
-            this.leaderId = message.serverId;
-            // Proj2: test this code
-            if (message.prevLogIndex >= 0 && message.prevLogIndex < this.persistentState.log.size()) {
-                // Proj2: check prevLogTerm
-                if (this.persistentState.log.get(message.prevLogIndex).term != message.prevLogTerm) {
-                    this.persistentState.log = this.persistentState.log.subList(0, message.prevLogIndex);
-                    return false;
-                } else {
-                    // Proj2: is this okay to add log entry unconditionally?
-                    // Otherwise, check whether this if cond. is necessary
-                    if (!this.persistentState.log.contains(message.entry)) {
-                        this.persistentState.log.add(message.entry);
-                    }
-                    // Proj2: Consider implementing Figure 2, All servers, bullet point 1/2 here
-                    if (message.leaderCommit > this.commitIndex) {
-                        this.commitIndex = Math.min(message.leaderCommit, this.persistentState.log.size() - 1);
-                    }
-                    return true;
-                }
-            } else {
-                return false;
-            }
         }
+        this.leaderId = message.serverId;
+
+        boolean logIndexIsValid = message.prevLogIndex >= 0 && message.prevLogIndex < this.persistentState.log.size();
+        if (!logIndexIsValid) {
+            return false;
+        }
+
+        // Proj2: test this code relating to the log
+        // Proj2: check prevLogTerm
+        boolean logTermsMatch = this.persistentState.log.get(message.prevLogIndex).term == message.prevLogTerm;
+        if (!logTermsMatch) {
+            this.persistentState.log = this.persistentState.log.subList(0, message.prevLogIndex);
+            return false;
+        }
+
+        // Proj2: is this okay to add log entry unconditionally?
+        // Otherwise, check whether this if cond. is necessary
+        if (!this.persistentState.log.contains(message.entry)) {
+            this.persistentState.log.add(message.entry);
+        }
+        // Proj2: Consider implementing Figure 2, All servers, bullet point 1/2 here
+        if (message.leaderCommit > this.commitIndex) {
+            this.commitIndex = Math.min(message.leaderCommit, this.persistentState.log.size() - 1);
+        }
+        return true;
     }
-    
-    // Checks if we grant the sender our vote ($5.2 Leader election)
+
+    /**
+     * Check whether we should grant the sender our vote.
+     * @param message data corresponding to RequestVotes request
+     * @param senderTermStale tells you whether sender term is stale
+     * @return true iff sender term is not stale, recipient can vote
+     *         for the candidate, and candidate's log is at least as
+     *         up-to-date as ours.
+     */
     private boolean grantVote(RequestVoteRequest message, boolean senderTermStale) {
         if (senderTermStale) {
             return false;
-        } else {
-            if (this.persistentState.votedFor == null || this.persistentState.votedFor.equals(message.serverId)) {
-                int lastLogIndex = this.persistentState.log.size() - 1;
-                int lastLogTerm = lastLogIndex < 0 ? -1 : this.persistentState.log.get(lastLogIndex).term;
-                // Proj2: make sure that this logic is correct for checking that a candidate's
-                // log is at least as up-to-date as ours. Test this logic afterwards
-                if (message.lastLogIndex >= lastLogIndex && message.lastLogTerm >= lastLogTerm) {
-                    assert(!senderTermStale);
-                    this.persistentState.votedFor = message.serverId;
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            }
         }
+
+        boolean canVote = this.persistentState.votedFor == null || this.persistentState.votedFor.equals(message.serverId);
+
+        if (!canVote) {
+            return false;
+        }
+
+        int lastLogIndex = this.persistentState.log.size() - 1;
+        int lastLogTerm = lastLogIndex < 0 ? -1 : this.persistentState.log.get(lastLogIndex).term;
+        // Proj2: make sure that this logic is correct for checking that a candidate's
+        // log is at least as up-to-date as ours. Test this logic afterwards
+        boolean candidateLogIsUpdated = message.lastLogIndex >= lastLogIndex && message.lastLogTerm >= lastLogTerm;
+        if (!candidateLogIsUpdated) {
+            return false;
+        }
+
+        this.persistentState.votedFor = message.serverId;
+        return true;
     }
     
-    // The Role class and its nested subclasses are used to help
-    // facilitate dynamic dispatch of methods based on the server's
-    // current role at any given time.
+    /**
+     * The nested Role interface and the subclasses that implement it
+     * together allow for dynamic dispatch of methods based on the
+     * server's current role at any given time.
+     */
     interface Role {
+        /**
+         * Resets timer interval to value depending on server's role.
+         */
         void resetTimeout();
+
+        /**
+         * Performs timeout action after timer's timeout occurred.
+         * @throws IOException
+         */
         void performTimeoutAction() throws IOException;
+
+        /**
+         * Called if AppendEntriesRequest is valid, so that the server
+         * can react accordingly.
+         * @throws IOException
+         */
         void processValidityOfAppendEntriesRequest() throws IOException;
     }
+
+    // Contains and groups follower-specific behavior.
     class Follower implements Role {
         public void resetTimeout() {
             timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
         public void performTimeoutAction() throws IOException {
-            updateRole(new Candidate());
+            transitionRole(new Candidate());
         }
         public void processValidityOfAppendEntriesRequest() throws IOException {
             this.resetTimeout();
@@ -352,14 +368,16 @@ public class Server implements Runnable {
             return "Follower";
         }
     }
+
+    // Contains and groups candidate-specific behavior.
     class Candidate implements Role {
         private int votesReceived;
 
         public void resetTimeout() {
             timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
-        
-        // Starts an election.
+
+        // Start a new election.
         public void performTimeoutAction() throws IOException {
             persistentState.currentTerm += 1;
             this.votesReceived = 1;
@@ -367,7 +385,7 @@ public class Server implements Runnable {
             int lastLogIndex = persistentState.log.size()-1;
             // lastLogTerm = -1 means there are no log entries
             int lastLogTerm = lastLogIndex < 0 ?
-                -1 : persistentState.log.get(lastLogIndex).term;
+                    -1 : persistentState.log.get(lastLogIndex).term;
 
             logMessage("broadcasting RequestVote requests");
             Message message = new RequestVoteRequest(myId, persistentState.currentTerm, lastLogIndex, lastLogTerm);
@@ -377,15 +395,21 @@ public class Server implements Runnable {
             }
         }
         public void processValidityOfAppendEntriesRequest() throws IOException {
-            updateRole(new Follower());
+            transitionRole(new Follower());
         }
 
+        /**
+         * Candidate-specific method to process RequestVoteReply
+         * message.
+         * @param RequestVoteReply reply to RequestVote request
+         * @throws IOException
+         */
         public void processRequestVoteReply(RequestVoteReply reply) throws IOException {
             if (reply.voteGranted) {
                 votesReceived += 1;
             }
             if (votesReceived > (otherServersMetadataMap.size()+1)/2) {
-                updateRole(new Leader());
+                transitionRole(new Leader());
             }
         }
         @Override
@@ -393,12 +417,14 @@ public class Server implements Runnable {
             return "Candidate";
         }
     }
+
+    // Contains and groups leader-specific behavior.
     class Leader implements Role {        
         public Leader() {
-            // initialize volatile state on leaders
+            // initialize volatile state specific to leaders
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
-                // Subtracting 1 makes it apparent that we want to send the entry
-                // corresponding to the next available index
+                // Subtracting 1 makes it apparent that we want to send
+                // the entry corresponding to the next available index
                 meta.nextIndex = (persistentState.log.size() - 1) + 1;
                 meta.matchIndex = -1;
             }
@@ -407,6 +433,7 @@ public class Server implements Runnable {
             timer.reset(HEARTBEAT_INTERVAL);
         }
 
+        // Send out a round of heartbeat messages to all servers.
         public void performTimeoutAction() throws IOException {
             // send regular heartbeat messages with zero or more log entries after a heartbeat interval has passed
             logMessage("broadcasting heartbeat messages");
@@ -424,7 +451,13 @@ public class Server implements Runnable {
             // prior to processing a valid request.
             assert(false);
         }
-   
+
+        /**
+         * Leader-specific method to process AppendEntriesReply
+         * message.
+         * @param AppendEntriesReply reply to AppendEntriesReply request
+         * @throws IOException
+         */
         public void processAppendEntriesReply(AppendEntriesReply reply) {
             // Proj2: write logic to handle AppendEntries message (as leader)
             ServerMetadata meta = otherServersMetadataMap.get(reply.serverId);
@@ -440,9 +473,17 @@ public class Server implements Runnable {
                 }
             }
         }
-        
+
         // Called by the leader to determine if we should update the commitIndex
         // ($5.3, $5.4)
+        /**
+         * Leader-specific method that checks whether we should commit
+         * any entries in the log.
+         * @param candidateN the proposed log index for which we are
+         *                   checking whether we should commit up to
+         * @return true iff we should update commitIndex to the
+         *         proposed log index
+         */
         private boolean testMajorityN(int candidateN) {
             if (candidateN<=commitIndex) {
                 return false;
@@ -469,20 +510,26 @@ public class Server implements Runnable {
         }
     }
 
+    /**
+     * Creates+runs a server instance that follows the Raft protocol.
+     * @param args args[0] is comma-delimited list of ports (0-indexed).
+     *             args[1] is port index to determine the port for which
+     *               the server will start a listener channel on.
+     */
     public static void main(String[] args) {
         if (args.length!=2) {
             System.out.println("Please suppply exactly two arguments");
-            System.out.println("Usage: <myPortIndex> <port0>,<port1>,...");
+            System.out.println("Usage: <port0>,<port1>,... <myPortIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
         }
 
-        String[] allPorts = args[1].split(",");
-        int myPortIndex = Integer.parseInt(args[0]); 
-        
+        String[] allPorts = args[0].split(",");
+        int myPortIndex = Integer.parseInt(args[1]); 
+
         if (myPortIndex < 0 || myPortIndex >= allPorts.length) {
             System.out.println("Please supply a valid index for first argument");
-            System.out.println("Usage: <myPortIndex> <port0>,<port1>,...");
+            System.out.println("Usage: <port0>,<port1>,... <myPortIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
         }

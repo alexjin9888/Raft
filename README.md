@@ -14,7 +14,7 @@ sh create-raft-jar.sh
    3. Run the following:
        ```bash
        export RAFT_PROJECT_PATH=<raftProjectDirectoryPath>
-       java -jar $RAFT_PROJECT_PATH/RaftServer.jar <myPortIndex> <port0>,<port1>,<port2>
+       java -jar $RAFT_PROJECT_PATH/RaftServer.jar <port0>,<port1>,... <myPortIndex>
        ```
     Note that the list of ports that you supply is 0-indexed.
 
@@ -26,9 +26,9 @@ cd $RAFT_PROJECT_PATH
 sh create-raft-jar.sh
 
 # Start up server 0 using the same terminal session:
-java -jar $RAFT_PROJECT_PATH/RaftServer.jar 0 6060,6061
+java -jar $RAFT_PROJECT_PATH/RaftServer.jar 6060,6061 0
 
 # Open another terminal session and start up server 1:
 export RAFT_PROJECT_PATH="/Users/donasaur/Documents/workspace-eclipse/190RaftProject"
-java -jar $RAFT_PROJECT_PATH/RaftServer.jar 1 6060,6061
+java -jar $RAFT_PROJECT_PATH/RaftServer.jar 6060,6061 1
 ```

@@ -1,6 +1,6 @@
 package messages;
 /*
- * Reply to RequestVoteRequests
+ * Reply to RequestVote request
  */
 @SuppressWarnings("serial")
 public class RequestVoteReply extends Message {

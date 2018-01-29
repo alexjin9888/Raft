@@ -11,7 +11,7 @@ import java.util.Iterator;
 public class ListenerThread extends Thread {
     private ServerSocketChannel acceptChannel;
     private Selector acceptSelector;
-    public Selector readSelector; // register channels to read from using this selector
+    private Selector readSelector; // register channels to read from using this selector
     
     public ListenerThread(InetSocketAddress address) throws IOException {
         acceptChannel = ServerSocketChannel.open();
@@ -40,6 +40,15 @@ public class ListenerThread extends Thread {
         } catch (IOException e) {
             System.out.println(e.getMessage());
         }
+    }
+    
+    /**
+     * Getter for read-events selector. Threads can check this selector
+     * to see if there are any channels that are ready to send data.
+     * @return a reference to the thread's read-events selector.
+     */
+    public Selector getReadSelector() {
+        return readSelector;
     }
 
     // Helper function to accept an incoming connection in non-blocking mode
