@@ -578,7 +578,7 @@ public class Server implements Runnable {
      */
     public static void main(String[] args) {
         if (args.length!=2) {
-            System.out.println("Please suppply exactly two arguments");
+            System.out.println("Please supply exactly two arguments");
             System.out.println("Usage: <port0>,<port1>,... <myPortIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
@@ -588,7 +588,7 @@ public class Server implements Runnable {
         int myPortIndex = Integer.parseInt(args[1]); 
 
         if (myPortIndex < 0 || myPortIndex >= allPorts.length) {
-            System.out.println("Please supply a valid index for first argument");
+            System.out.println("Please supply a valid index for first arg.");
             System.out.println("Usage: <port0>,<port1>,... <myPortIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
