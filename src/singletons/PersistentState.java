@@ -10,12 +10,15 @@ import misc.LogEntry;
 import utils.ObjectUtils;
 
 /**
- * A class that manages the persistent state of a server
+ * An instance of this class is used to manage the persistent state of a server
  * See RAFT figure 2
  *
  */
-@SuppressWarnings("serial")
 public class PersistentState implements Serializable {
+    
+    // Class versioning to support state serialization/deserialization
+    private static final long serialVersionUID = 1L;
+
     private static final String BASE_LOG_DIR =
         System.getProperty("user.dir").toString();
     private static final String LOG_EXT = ".log";
@@ -24,12 +27,11 @@ public class PersistentState implements Serializable {
      * myId Unique identification (Id) per server
      * See RAFT figure 2 for descriptions of other variables
      */
-    private String myId; // Unique identification (Id) per server
+    private String myId; // unique server id
     public int currentTerm;
     public String votedFor;
     public List<LogEntry> log;
 
-    // 
     /**
      * @param myId
      * @throws IOException
