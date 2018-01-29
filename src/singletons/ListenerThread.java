@@ -8,12 +8,28 @@ import java.nio.channels.SocketChannel;
 import java.util.Set;
 import java.util.Iterator;
 
+/**
+ * A thread that handles accepts
+ * When a server boots up, it creates a server socket channel using this class
+ * and polls for incoming connections
+ *
+ */
 public class ListenerThread extends Thread {
+    /**
+     * acceptChannel  The channel for incoming messages
+     * acceptSelector Selector for all accepts
+     * readSelector   Register channels to read from using this selector
+     */
     private ServerSocketChannel acceptChannel;
     private Selector acceptSelector;
-    // register channels to read from using this selector
     private Selector readSelector;
     
+    /**
+     * The constructor creates a channel and listens for incoming connections
+     * (nonblocking mode) using this.
+     * @param address The address that server listens at
+     * @throws IOException
+     */
     public ListenerThread(InetSocketAddress address) throws IOException {
         acceptChannel = ServerSocketChannel.open();
         acceptChannel.configureBlocking(false);
@@ -24,6 +40,10 @@ public class ListenerThread extends Thread {
         readSelector = Selector.open();
     }
 
+    /* (non-Javadoc)
+     * @see java.lang.Thread#run()
+     * Continuos poll of incoming connections
+     */
     public void run() {
         try {
             while(true) {
@@ -52,8 +72,11 @@ public class ListenerThread extends Thread {
         return readSelector;
     }
 
-    // Helper function to accept an incoming connection in non-blocking mode
-    // We then get ready to read the incoming message
+    /**
+     * Helper function to accept an incoming connection in non-blocking mode
+     * We then get ready to read the incoming message
+     * @throws IOException
+     */
     private void acceptConnection() throws IOException {
         SocketChannel clientChannel = acceptChannel.accept();
         clientChannel.configureBlocking(false);

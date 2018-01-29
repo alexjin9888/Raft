@@ -1,19 +1,24 @@
 package misc;
 import java.net.InetSocketAddress;
 
+/**
+ * Implementation of state of each server
+ * See RAFT figure 2 for detailed descriptions
+ *
+ */
 public class ServerMetadata {
+    /**
+     * See RAFT figure 2 for explanation of these variables
+     */
     public String id;
     public InetSocketAddress address;
-
-    // Volatile States on leaders
-    // (Reinitialized after election)
-    // * for each server, index of the next log entry to send to that server
-    //   (initialized to leader last log index + 1)
     public int nextIndex;
-    // * for each server, index of highest log entry known to be replicated on
-    //   server (initialized to 0, increases monotonically)
     public int matchIndex;
 
+    /**
+     * @param id      Server's unique ID
+     * @param address Server's unique address
+     */
     public ServerMetadata(String id, InetSocketAddress address) {
         super();
         this.id = id;

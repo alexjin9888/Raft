@@ -63,7 +63,7 @@ public class Server implements Runnable {
      * * ExecutorService instance manages a thread pool for us, which
      *   we use to send concurrent requests to other servers.
      */
-    private Timer timer;
+    private Timer myTimer;
     private PersistentState persistentState;
     private ListenerThread listenerThread;
     private ExecutorService threadPoolService;
@@ -109,7 +109,7 @@ public class Server implements Runnable {
             }
         }
 
-        timer = new Timer();
+        myTimer = new Timer();
 
         try {
             transitionRole(new Follower());
@@ -144,7 +144,7 @@ public class Server implements Runnable {
         Selector readSelector = listenerThread.getReadSelector();
         try {
             while (true) {
-                if (timer.timeIsUp()) {
+                if (myTimer.timeIsUp()) {
                     this.role.performTimeoutAction();
                     this.role.resetTimeout();
                 }
@@ -283,7 +283,7 @@ public class Server implements Runnable {
         } else {
             assert(false);
         }
-    }    
+    }
     
     /**
      * Processes an AppendEntries request from a leader.
@@ -395,7 +395,7 @@ public class Server implements Runnable {
     // Contains and groups together follower-specific behavior.
     class Follower implements Role {
         public void resetTimeout() {
-            timer.reset(ThreadLocalRandom.current().nextInt(
+            myTimer.reset(ThreadLocalRandom.current().nextInt(
                 MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
         public void performTimeoutAction() throws IOException {
@@ -422,7 +422,7 @@ public class Server implements Runnable {
         }
 
         public void resetTimeout() {
-            timer.reset(ThreadLocalRandom.current().nextInt(
+            myTimer.reset(ThreadLocalRandom.current().nextInt(
                 MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
 
@@ -485,7 +485,7 @@ public class Server implements Runnable {
             }
         }
         public void resetTimeout() {
-            timer.reset(HEARTBEAT_INTERVAL);
+            myTimer.reset(HEARTBEAT_INTERVAL);
         }
 
         /* 

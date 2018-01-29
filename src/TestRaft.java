@@ -2,7 +2,7 @@ import java.net.InetSocketAddress;
 import java.util.HashMap;
 
 
-// Not part of sumitted code
+// Not part of submitted code
 public class TestRaft {
 
     public static void main(String[] args) {

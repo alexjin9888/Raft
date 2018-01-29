@@ -1,12 +1,22 @@
 package messages;
-/*
+/**
  * Initiated and sent by candidates to gather votes ($5.2)
+ *
  */
 @SuppressWarnings("serial")
 public class RequestVoteRequest extends Message {
-    public int lastLogIndex;   // index of candidate's last log entry ($5.4)
-    public int lastLogTerm;    // term of candidate's last log entry ($5.4)
+    /**
+     * See RAFT figure 2 for explanation of these variables
+     */
+    public int lastLogIndex;
+    public int lastLogTerm;
 
+    /**
+     * @param serverId     ID of the leader who is sending this request
+     * @param term         My current term
+     * @param lastLogIndex see above
+     * @param lastLogTerm  see above
+     */
     public RequestVoteRequest(String serverId, int term, int lastLogIndex,
         int lastLogTerm) {
         super();

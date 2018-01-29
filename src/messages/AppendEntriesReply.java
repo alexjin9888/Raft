@@ -1,11 +1,20 @@
 package messages;
-/*
- * Reply to AppendEntriesRequest   
+/**
+ * Reply to AppendEntriesRequest
+ *
  */
 @SuppressWarnings("serial")
 public class AppendEntriesReply extends Message {
-    public boolean success;    // true if  follower contained entry matching
-                        // prevLogIndex and prevLogTerm
+    /** 
+     * true if  follower contained entry matching prevLogIndex and prevLogTerm
+     * 
+     */
+    public boolean success;
+    /**
+     * @param serverId ID of server sending the reply
+     * @param term     my current term
+     * @param success  result of AppendEntriesRequest
+     */
     public AppendEntriesReply(String serverId, int term, boolean success) {
         super();
         this.serverId = serverId;
