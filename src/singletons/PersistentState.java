@@ -44,15 +44,14 @@ public class PersistentState implements Serializable {
         }
     }
 
-    // Check to see if there is a file on disk corresponding to the server's
-    // persistent state
-    public boolean existsState() {
-        return Files.exists(Paths.get(BASE_LOG_DIR, myId + LOG_EXT));
+    // Writes to file the current persistent state of this server
+    public void save() throws IOException {
+        Files.write(Paths.get(BASE_LOG_DIR, myId + LOG_EXT), ObjectUtils.serializeObject(this));
     }
 
     // Load from file the persistent state of this server
     //  * invariant: the file with persistent state exists
-    public void load() throws IOException {
+    private void load() throws IOException {
         byte[] persistentStateBytes = Files.readAllBytes(Paths.get(BASE_LOG_DIR, myId + LOG_EXT));
 
         PersistentState loadedPersistentState = (PersistentState) ObjectUtils.deserializeObject(persistentStateBytes);
@@ -60,9 +59,10 @@ public class PersistentState implements Serializable {
         this.votedFor = loadedPersistentState.votedFor;
         this.log = loadedPersistentState.log;
     }
-
-    // Writes to file the current persistent state of this server
-    public void save() throws IOException {
-        Files.write(Paths.get(BASE_LOG_DIR, myId + LOG_EXT), ObjectUtils.serializeObject(this));
+    
+    // Check to see if there is a file on disk corresponding to the server's
+    // persistent state
+    private boolean existsState() {
+        return Files.exists(Paths.get(BASE_LOG_DIR, myId + LOG_EXT));
     }
 }

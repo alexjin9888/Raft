@@ -14,6 +14,28 @@ public class NetworkUtils {
     // Figure out a better way to determine the right buffer size
     private static final int BUFFER_SIZE = 1024;
 
+    // Sends a full message from a channel
+    // Closes the channel afterwards
+    // If we receive an IOException while trying to establish a connection (e.g., target server is down),
+    // or while writing (e.g., target server goes down while transmitting data), then we throw the
+    // error for the method caller to handle
+    public static void sendMessage(InetSocketAddress address, Message message) throws IOException {
+
+        SocketChannel socketChannel = SocketChannel.open(address);
+        socketChannel.configureBlocking(false);
+        
+        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+        
+        buffer.clear();
+        buffer.put(ObjectUtils.serializeObject(message));
+        buffer.flip();
+        while(buffer.hasRemaining()) {
+            socketChannel.write(buffer);
+        }
+        
+        socketChannel.close();
+    }
+    
     // Reads a full message from a channel
     // Most of the time, we will want to close the channel after
     // reading the full message.
@@ -42,27 +64,5 @@ public class NetworkUtils {
         }
         
         return (Message) ObjectUtils.deserializeObject(messageBytes);
-    }
-
-    // Sends a full message from a channel
-    // Closes the channel afterwards
-    // If we receive an IOException while trying to establish a connection (e.g., target server is down),
-    // or while writing (e.g., target server goes down while transmitting data), then we throw the
-    // error for the method caller to handle
-    public static void sendMessage(InetSocketAddress address, Message message) throws IOException {
-
-        SocketChannel socketChannel = SocketChannel.open(address);
-        socketChannel.configureBlocking(false);
-        
-        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-        
-        buffer.clear();
-        buffer.put(ObjectUtils.serializeObject(message));
-        buffer.flip();
-        while(buffer.hasRemaining()) {
-            socketChannel.write(buffer);
-        }
-        
-        socketChannel.close();
     }
 }

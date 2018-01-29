@@ -107,14 +107,14 @@ public class Server implements Runnable {
         timer = new Timer();
 
         try {
+            transitionRole(new Follower());
             persistentState = new PersistentState(myId);
             listenerThread = new ListenerThread(myAddress);
-            transitionRole(new Follower());
         } catch (IOException e) {
             if (e.getMessage().equals("Address already in use")) {
                 logMessage("address " + myAddress + " already in use");
             } else {
-                logMessage(e.getMessage());
+                e.printStackTrace();
             }
             System.exit(1);
         }
@@ -149,42 +149,9 @@ public class Server implements Runnable {
                 while(keyIterator.hasNext()) {
                     logMessage("about to read");
                     SelectionKey key = keyIterator.next();
-                    SocketChannel channel = (SocketChannel) key.channel();
-                    Message message = (Message) NetworkUtils.receiveMessage(channel, true);
+                    Message message = (Message) NetworkUtils.receiveMessage((SocketChannel) key.channel(), true);
                     logMessage("received " + message);
-                    boolean myTermStale = message.term > this.persistentState.currentTerm;
-                    boolean senderTermStale = message.term < this.persistentState.currentTerm;
-                    if (myTermStale) {
-                        this.persistentState.currentTerm = message.term;
-                        this.persistentState.votedFor = null;
-                        this.transitionRole(new Follower());
-                    }
-                    if (message instanceof AppendEntriesRequest) {
-                        if (!senderTermStale) {
-                            this.role.processValidityOfAppendEntriesRequest();
-                        }
-                        boolean success = processEntries((AppendEntriesRequest) message, senderTermStale);
-                        AppendEntriesReply reply = new AppendEntriesReply(myId, this.persistentState.currentTerm, success);
-                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
-                    } else if (message instanceof RequestVoteRequest) {
-                        boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
-                        if (grantingVote) {
-                            assert(this.role instanceof Follower);
-                            this.role.resetTimeout();
-                        }
-                        RequestVoteReply reply = new RequestVoteReply(myId, this.persistentState.currentTerm, grantingVote);
-                        saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
-                    } else if (message instanceof AppendEntriesReply) {
-                        if (this.role instanceof Leader) {
-                            ((Leader) this.role).processAppendEntriesReply((AppendEntriesReply) message);
-                        }
-                    } else if (message instanceof RequestVoteReply) {
-                        if (this.role instanceof Candidate) {
-                            ((Candidate) this.role).processRequestVoteReply((RequestVoteReply) message);
-                        }
-                    } else {
-                        assert(false);
-                    }
+                    processMessage(message);
                     keyIterator.remove();
                 }
             }
@@ -257,6 +224,48 @@ public class Server implements Runnable {
         myLogger.info(myId + " :: term=" + this.persistentState.currentTerm + " :: " + role + " :: " + message);
     }
 
+    /**
+     * Processes an incoming request message and conditionally sends
+     * a reply depending on type of message.
+     * @param message incoming request message
+     * @throws IOException
+     */
+    private void processMessage(Message message) throws IOException {
+        boolean myTermStale = message.term > this.persistentState.currentTerm;
+        boolean senderTermStale = message.term < this.persistentState.currentTerm;
+        if (myTermStale) {
+            this.persistentState.currentTerm = message.term;
+            this.persistentState.votedFor = null;
+            this.transitionRole(new Follower());
+        }
+        if (message instanceof AppendEntriesRequest) {
+            if (!senderTermStale) {
+                this.role.processValidityOfAppendEntriesRequest();
+            }
+            boolean success = processEntries((AppendEntriesRequest) message, senderTermStale);
+            AppendEntriesReply reply = new AppendEntriesReply(myId, this.persistentState.currentTerm, success);
+            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
+        } else if (message instanceof RequestVoteRequest) {
+            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
+            if (grantingVote) {
+                assert(this.role instanceof Follower);
+                this.role.resetTimeout();
+            }
+            RequestVoteReply reply = new RequestVoteReply(myId, this.persistentState.currentTerm, grantingVote);
+            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
+        } else if (message instanceof AppendEntriesReply) {
+            if (this.role instanceof Leader) {
+                ((Leader) this.role).processAppendEntriesReply((AppendEntriesReply) message);
+            }
+        } else if (message instanceof RequestVoteReply) {
+            if (this.role instanceof Candidate) {
+                ((Candidate) this.role).processRequestVoteReply((RequestVoteReply) message);
+            }
+        } else {
+            assert(false);
+        }
+    }    
+    
     /**
      * Processes an AppendEntries request from a leader.
      * @param message data corresponding to AppendEntries request
@@ -352,7 +361,7 @@ public class Server implements Runnable {
         void processValidityOfAppendEntriesRequest() throws IOException;
     }
 
-    // Contains and groups follower-specific behavior.
+    // Contains and groups together follower-specific behavior.
     class Follower implements Role {
         public void resetTimeout() {
             timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
@@ -369,15 +378,24 @@ public class Server implements Runnable {
         }
     }
 
-    // Contains and groups candidate-specific behavior.
+    // Contains and groups together candidate-specific behavior.
     class Candidate implements Role {
         private int votesReceived;
+        
+        /**
+         * Initializes volatile state specific to candidate role.
+         */
+        public Candidate() {
+            votesReceived = 0;
+        }
 
         public void resetTimeout() {
             timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
 
-        // Start a new election.
+        /*
+         * Starts a new election.
+         */
         public void performTimeoutAction() throws IOException {
             persistentState.currentTerm += 1;
             this.votesReceived = 1;
@@ -418,10 +436,12 @@ public class Server implements Runnable {
         }
     }
 
-    // Contains and groups leader-specific behavior.
+    // Contains and groups together leader-specific behavior.
     class Leader implements Role {        
+        /**
+         * Initializes volatile state specific to leader role.
+         */
         public Leader() {
-            // initialize volatile state specific to leaders
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
                 // Subtracting 1 makes it apparent that we want to send
                 // the entry corresponding to the next available index
@@ -433,7 +453,9 @@ public class Server implements Runnable {
             timer.reset(HEARTBEAT_INTERVAL);
         }
 
-        // Send out a round of heartbeat messages to all servers.
+        /* 
+         * Send out a round of heartbeat messages to all servers.
+         */
         public void performTimeoutAction() throws IOException {
             // send regular heartbeat messages with zero or more log entries after a heartbeat interval has passed
             logMessage("broadcasting heartbeat messages");
@@ -474,8 +496,6 @@ public class Server implements Runnable {
             }
         }
 
-        // Called by the leader to determine if we should update the commitIndex
-        // ($5.3, $5.4)
         /**
          * Leader-specific method that checks whether we should commit
          * any entries in the log.
@@ -512,9 +532,9 @@ public class Server implements Runnable {
 
     /**
      * Creates+runs a server instance that follows the Raft protocol.
-     * @param args args[0] is comma-delimited list of ports (0-indexed).
-     *             args[1] is port index to determine the port for which
-     *               the server will start a listener channel on.
+     * @param args args[0] is a comma-delimited ports list (0-indexed)
+     *             args[1] is a port index to determine the port for
+     *               which the server will start a listener channel on
      */
     public static void main(String[] args) {
         if (args.length!=2) {

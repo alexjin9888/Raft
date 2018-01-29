@@ -31,7 +31,8 @@ public class ObjectUtils {
         try {
             object = in.readObject();
         } catch (ClassNotFoundException e) {
-            assert(false);
+            e.printStackTrace();
+            System.exit(1);
         }
 
         in.close();
