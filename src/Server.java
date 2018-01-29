@@ -577,33 +577,30 @@ public class Server implements Runnable {
      *               which the server will start a listener channel on
      */
     public static void main(String[] args) {
-        boolean validArgs = true;
-        String[] allPorts = null;
         int myPortIndex = -1;
-        int[] allPortsParsed = null;
-        if (args.length!=2) {
+        String[] allPortStrings = null;
+        int[] allPorts = null;
+        boolean validArgs = true;
+
+        if (args.length != 2) {
             validArgs = false;
         } else {
-            allPorts = args[0].split(",");
-            allPortsParsed = new int[allPorts.length];
+            allPortStrings = args[0].split(",");
+            allPorts = new int[allPortStrings.length];
             try {
                 myPortIndex = Integer.parseInt(args[1]);
-            } catch (NumberFormatException e) {
-                validArgs = false;
-            }
-            for (int i=0; i<allPorts.length; i++) {
-                try {
-                    allPortsParsed[i] = Integer.parseInt(allPorts[i]);
-                } catch (NumberFormatException e) {
+                if (myPortIndex < 0 || myPortIndex >= allPortStrings.length) {
                     validArgs = false;
                 }
-            }
-            if (myPortIndex < 0 || myPortIndex >= allPorts.length) {
+                for (int i=0; i<allPortStrings.length; i++) {
+                    allPorts[i] = Integer.parseInt(allPortStrings[i]);
+                }
+            } catch (NumberFormatException e) {
                 validArgs = false;
             }
         }
         if (!validArgs) {
-            System.out.println("Please supply exactly two arguments");
+            System.out.println("Please supply exactly two valid arguments");
             System.out.println("Usage: <port0>,<port1>,... <myPortIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
@@ -612,9 +609,9 @@ public class Server implements Runnable {
         System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
         HashMap<String, InetSocketAddress> serverAddressesMap = 
             new HashMap<String, InetSocketAddress>();
-        for (int i=0; i<allPortsParsed.length; i++) {
+        for (int i=0; i<allPorts.length; i++) {
             serverAddressesMap.put("Server" + i, new 
-                InetSocketAddress("localhost", allPortsParsed[i]));   
+                InetSocketAddress("localhost", allPorts[i]));   
         }
 
         Server myServer = new Server("Server"+myPortIndex, serverAddressesMap);
