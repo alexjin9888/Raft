@@ -30,7 +30,7 @@ public class ObjectUtils {
         try {
             object = in.readObject();
         } catch (ClassNotFoundException e) {
-            e.printStackTrace();
+            assert(false);
         }
 
         in.close();

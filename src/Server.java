@@ -14,6 +14,8 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,7 +50,6 @@ import java.util.HashMap;
  */
 public class Server implements Runnable {
     
-    // Magical constants
     private static final int HEARTBEAT_INTERVAL = 1000;
     private static final int MIN_ELECTION_TIMEOUT = 3000;
     private static final int MAX_ELECTION_TIMEOUT = 5000;
@@ -63,13 +64,14 @@ public class Server implements Runnable {
     // *   1) matchIndex (only applicable for leader)
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
     // private ROLE role; // my role, one of FOLLOWER, CANDIDATE, or LEADER
+
     private Role role;
-
-    private ListenerThread listenerThread;
-    private Timer timer;
-
     // PersistentStorage
     private PersistentState persistentState;
+    
+    private Timer timer;
+    private ListenerThread listenerThread;
+    private ExecutorService networkService;
 
     // Volatile State on all servers
     // * index of highest log entry known to be committed (initialized to 0,
@@ -91,10 +93,10 @@ public class Server implements Runnable {
     //   2) change our role to FOLLOWER.
     //   3) create a socket for all incoming communications
     //   4) initialize and load (Proj2) variables
-    public Server(String serverId, HashMap<String, InetSocketAddress> serverAddressesMap) {
-        this.myId = serverId;
-        this.leaderId = null;
-        this.otherServersMetadataMap = new HashMap<String, ServerMetadata>();
+    public Server(String id, HashMap<String, InetSocketAddress> serverAddressesMap) {
+        myId = id;
+        leaderId = null;
+        otherServersMetadataMap = new HashMap<String, ServerMetadata>();
         for (HashMap.Entry<String, InetSocketAddress> entry : serverAddressesMap.entrySet()) {
             String elemId = entry.getKey();
             InetSocketAddress elemAddress = entry.getValue();  
@@ -105,28 +107,30 @@ public class Server implements Runnable {
                 this.otherServersMetadataMap.put(elemId, new ServerMetadata(elemId, elemAddress));
             }
         }
-
-        // Start a thread to accept connections and add them to read selector
-        listenerThread = new ListenerThread(myAddress, myLogger);
-        listenerThread.start();
         
         timer = new Timer();
 
-        this.persistentState = new PersistentState(this.myId);
+        // Start a thread to accept connections and add them to read selector
+        try {
+            updateRole(new Follower());
+            persistentState = new PersistentState(myId);
+            listenerThread = new ListenerThread(myAddress);
+        } catch (IOException e) {
+            if (e.getMessage().equals("Address already in use")) {
+                logMessage("address " + myAddress + " already in use");
+            } else {
+                logMessage(e.getMessage());
+            }
+            System.exit(1);
+        }
+        listenerThread.start();
+        networkService = Executors.newFixedThreadPool(this.otherServersMetadataMap.size());
 
         this.commitIndex = -1;
         this.lastApplied = -1;
-        
-        
-        try {
-            this.updateRole(this.new Follower());
-        } catch (IOException e) {
-            // This case should never occur during the follower role's initialization
-            assert(false);
-        }
 
-        // Debug
-        myLogger.info(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
+        myLogger.debug(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
+        logMessage("successfully booted");
     }
 
     // All servers shall listen and respond to incoming requests. Below is a
@@ -173,14 +177,13 @@ public class Server implements Runnable {
                 if (listenerThread.readSelector.selectNow() == 0) {
                     continue;
                 } else {
-                    logMessage("about to process one or more read events");
                     Set<SelectionKey> selectedKeys = listenerThread.readSelector.selectedKeys();
 
                     Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
                     while(keyIterator.hasNext()) {
-                        SelectionKey key = keyIterator.next();
                         logMessage("about to read");
+                        SelectionKey key = keyIterator.next();
                         SocketChannel channel = (SocketChannel) key.channel();
                         Message message = (Message) NetworkUtils.receiveMessage(channel, true);
                         logMessage("received " + message);
@@ -222,7 +225,7 @@ public class Server implements Runnable {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            logMessage(e.getMessage());
         }
     }
 
@@ -249,15 +252,19 @@ public class Server implements Runnable {
         this.role.resetTimeout();
     }
 
-    private void saveStateAndSendMessage(ServerMetadata recipientMeta, Message message) {
-        try {
-            this.persistentState.save();
-            NetworkUtils.sendMessage(recipientMeta.address, message);
-        } catch (IOException e) {
-            if (e.getMessage().equals("Connection refused")) {
-                logMessage("connection to " + recipientMeta.id + " refused");
+    private void saveStateAndSendMessage(ServerMetadata recipientMeta, Message message) throws IOException {
+        this.persistentState.save();
+        networkService.submit(() -> {
+            try {
+                NetworkUtils.sendMessage(recipientMeta.address, message);
+            } catch (IOException e) {
+                if (e.getMessage().equals("Connection refused")) {
+                    logMessage("connection to " + recipientMeta.id + " refused");
+                } else {
+                    logMessage(e.getMessage());
+                }
             }
-        }
+        });
     }
 
     // Helper logger that logs to a log4j2 logger instance
@@ -321,7 +328,7 @@ public class Server implements Runnable {
             }
         }
     }
-
+    
     // The Role class and its nested subclasses are used to help
     // facilitate dynamic dispatch of methods based on the server's
     // current role at any given time.
@@ -362,7 +369,7 @@ public class Server implements Runnable {
             int lastLogTerm = lastLogIndex < 0 ?
                 -1 : persistentState.log.get(lastLogIndex).term;
 
-            logMessage("broadcasting RequestVotes requests");
+            logMessage("broadcasting RequestVote requests");
             Message message = new RequestVoteRequest(myId, persistentState.currentTerm, lastLogIndex, lastLogTerm);
 
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
@@ -467,7 +474,7 @@ public class Server implements Runnable {
             System.out.println("Please suppply exactly two arguments");
             System.out.println("Usage: <myPortIndex> <port0>,<port1>,...");
             System.out.println("Note: List of ports is 0-indexed");
-            System.exit(-1);
+            System.exit(1);
         }
 
         String[] allPorts = args[1].split(",");
@@ -477,7 +484,7 @@ public class Server implements Runnable {
             System.out.println("Please supply a valid index for first argument");
             System.out.println("Usage: <myPortIndex> <port0>,<port1>,...");
             System.out.println("Note: List of ports is 0-indexed");
-            System.exit(-1);
+            System.exit(1);
         }
 
         System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
@@ -487,7 +494,6 @@ public class Server implements Runnable {
         }
 
         Server myServer = new Server("Server" + myPortIndex, serverAddressesMap);
-        System.out.println("Running Server" + myPortIndex + " now");
         myServer.run();
     }
 }

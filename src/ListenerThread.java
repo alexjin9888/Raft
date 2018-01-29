@@ -13,22 +13,14 @@ public class ListenerThread extends Thread {
     private Selector acceptSelector;
     public Selector readSelector; // register channels to read from using this selector
     
-    public ListenerThread(InetSocketAddress address, Logger myLogger) {
-        try {
-            acceptChannel = ServerSocketChannel.open();
-            acceptChannel.configureBlocking(false);
-            acceptChannel.socket().bind(address);
-            
-            acceptSelector = Selector.open();
-            acceptChannel.register(acceptSelector, SelectionKey.OP_ACCEPT);
-            readSelector = Selector.open();
-        } catch (IOException e) {
-            if (e.getMessage().equals("Address already in use")) {
-                myLogger.info("address " + address + " already in use");
-            }
-            System.exit(-1);
-            // e.printStackTrace();
-        }
+    public ListenerThread(InetSocketAddress address) throws IOException {
+        acceptChannel = ServerSocketChannel.open();
+        acceptChannel.configureBlocking(false);
+        acceptChannel.socket().bind(address);
+        
+        acceptSelector = Selector.open();
+        acceptChannel.register(acceptSelector, SelectionKey.OP_ACCEPT);
+        readSelector = Selector.open();
     }
 
     public void run() {
@@ -46,7 +38,7 @@ public class ListenerThread extends Thread {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println(e.getMessage());
         }
     }
 

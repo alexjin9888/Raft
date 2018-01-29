@@ -13,6 +13,9 @@ import java.util.List;
  * A class that manages the persistent state of a server  
  */
 public class PersistentState implements Serializable {
+    private static final String BASE_LOG_DIR = System.getProperty("user.dir").toString();
+    private static final String LOG_EXT = ".log";
+    
     private String myId; // Unique identification (Id) per server
     // Persistent State
     // * Latest term server has seen (initialized to 0 on first boot, increases
@@ -24,32 +27,25 @@ public class PersistentState implements Serializable {
     //   when entry was received by leader (first index is 0)
     public List<LogEntry> log;
 
-    private static final String BASE_LOG_DIR = System.getProperty("user.dir").toString();
-    private static final String LOG_EXT = ".log";
-
     // Class constructor
     // Creates an object that manages persistent state for server with ID=myId
     // During instantiation, it will do 1 of 2 things:
     //   1) If persistent state file exists, load it
     //   2) Otherwise initialize persistent state variables
-    public PersistentState(String myId) {
+    public PersistentState(String myId) throws IOException {
         this.myId = myId;
-        if (!checkStorageExists()) {
+        if (!existsState()) {
             this.currentTerm = 0;
             this.votedFor = null;
             this.log = new ArrayList<LogEntry>();
         } else {
-            try {
-                load();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            load();
         }
     }
 
     // Check to see if there is a file on disk corresponding to the server's
     // persistent state
-    public boolean checkStorageExists() {
+    public boolean existsState() {
         return Files.exists(Paths.get(BASE_LOG_DIR, myId + LOG_EXT));
     }
 
