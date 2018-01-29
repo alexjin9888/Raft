@@ -14,7 +14,8 @@ import utils.ObjectUtils;
  */
 @SuppressWarnings("serial")
 public class PersistentState implements Serializable {
-    private static final String BASE_LOG_DIR = System.getProperty("user.dir").toString();
+    private static final String BASE_LOG_DIR =
+        System.getProperty("user.dir").toString();
     private static final String LOG_EXT = ".log";
     
     private String myId; // Unique identification (Id) per server
@@ -46,15 +47,18 @@ public class PersistentState implements Serializable {
 
     // Writes to file the current persistent state of this server
     public void save() throws IOException {
-        Files.write(Paths.get(BASE_LOG_DIR, myId + LOG_EXT), ObjectUtils.serializeObject(this));
+        Files.write(Paths.get(BASE_LOG_DIR, myId + LOG_EXT), 
+            ObjectUtils.serializeObject(this));
     }
 
     // Load from file the persistent state of this server
     //  * invariant: the file with persistent state exists
     private void load() throws IOException {
-        byte[] persistentStateBytes = Files.readAllBytes(Paths.get(BASE_LOG_DIR, myId + LOG_EXT));
+        byte[] persistentStateBytes = Files.readAllBytes(Paths.get(BASE_LOG_DIR,
+            myId + LOG_EXT));
 
-        PersistentState loadedPersistentState = (PersistentState) ObjectUtils.deserializeObject(persistentStateBytes);
+        PersistentState loadedPersistentState = (PersistentState) 
+            ObjectUtils.deserializeObject(persistentStateBytes);
         this.currentTerm = loadedPersistentState.currentTerm;
         this.votedFor = loadedPersistentState.votedFor;
         this.log = loadedPersistentState.log;

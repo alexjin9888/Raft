@@ -16,10 +16,12 @@ public class NetworkUtils {
 
     // Sends a full message from a channel
     // Closes the channel afterwards
-    // If we receive an IOException while trying to establish a connection (e.g., target server is down),
-    // or while writing (e.g., target server goes down while transmitting data), then we throw the
-    // error for the method caller to handle
-    public static void sendMessage(InetSocketAddress address, Message message) throws IOException {
+    // If we receive an IOException while trying to establish a connection
+    // (e.g., target server is down), or while writing (e.g., target server goes
+    // down while transmitting data), then we throw the error for the method
+    // caller to handle
+    public static void sendMessage(InetSocketAddress address, Message message) 
+        throws IOException {
 
         SocketChannel socketChannel = SocketChannel.open(address);
         socketChannel.configureBlocking(false);
@@ -39,9 +41,11 @@ public class NetworkUtils {
     // Reads a full message from a channel
     // Most of the time, we will want to close the channel after
     // reading the full message.
-    // If we receive an IOException while reading (e.g., requester goes down while receiving data),
-    // then we throw the error for the method caller to handle
-    public static Message receiveMessage(SocketChannel channel, boolean closeChannel) throws IOException {
+    // If we receive an IOException while reading (e.g., requester goes down 
+    // while receiving data), then we throw the error for the method caller to
+    // handle
+    public static Message receiveMessage(SocketChannel channel, 
+        boolean closeChannel) throws IOException {
         // Create a buffer to store request data
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         ByteArrayOutputStream messageBytesStream = new ByteArrayOutputStream();

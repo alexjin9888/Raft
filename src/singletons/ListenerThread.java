@@ -11,7 +11,8 @@ import java.util.Iterator;
 public class ListenerThread extends Thread {
     private ServerSocketChannel acceptChannel;
     private Selector acceptSelector;
-    private Selector readSelector; // register channels to read from using this selector
+    // register channels to read from using this selector
+    private Selector readSelector;
     
     public ListenerThread(InetSocketAddress address) throws IOException {
         acceptChannel = ServerSocketChannel.open();

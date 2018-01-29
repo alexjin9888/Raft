@@ -8,7 +8,8 @@ import java.io.Serializable;
 
 public class ObjectUtils {
 
-    public static byte[] serializeObject(Serializable object) throws IOException {
+    public static byte[] serializeObject(Serializable object) 
+        throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         ObjectOutputStream out = null;
         byte[] objectBytes = null;
@@ -22,7 +23,8 @@ public class ObjectUtils {
         return objectBytes;
     }
     
-    public static Object deserializeObject(byte[] objectBytes) throws IOException {
+    public static Object deserializeObject(byte[] objectBytes) 
+        throws IOException {
         Object object = null;
 
         ByteArrayInputStream bis = new ByteArrayInputStream(objectBytes);

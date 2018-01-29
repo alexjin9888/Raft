@@ -72,8 +72,10 @@ public class Server implements Runnable {
 
     /*
      * Log-specific volatile state:
-     * * commitIndex - index of highest log entry known to be committed (initialized to 0, increases monotonically)
-     * * lastApplied - index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+     * * commitIndex - index of highest log entry known to be committed
+     *                 (initialized to 0, increases monotonically)
+     * * lastApplied - index of highest log entry applied to state machine
+     *                 (initialized to 0, increases monotonically)
      */
     private int commitIndex;
     @SuppressWarnings("unused")
@@ -89,18 +91,21 @@ public class Server implements Runnable {
      * @param serverAddressesMap map that maps server id to address.
      *        Contains entries for all servers in Raft cluster.
      */
-    public Server(String id, HashMap<String, InetSocketAddress> serverAddressesMap) {
+    public Server(String id,
+        HashMap<String, InetSocketAddress> serverAddressesMap) {
         myId = id;
         leaderId = null;
         otherServersMetadataMap = new HashMap<String, ServerMetadata>();
-        for (HashMap.Entry<String, InetSocketAddress> entry : serverAddressesMap.entrySet()) {
+        for (HashMap.Entry<String, InetSocketAddress> entry
+             : serverAddressesMap.entrySet()) {
             String elemId = entry.getKey();
             InetSocketAddress elemAddress = entry.getValue();  
 
             if (elemId.equals(this.myId)) {
                 myAddress = elemAddress;
             } else {
-                this.otherServersMetadataMap.put(elemId, new ServerMetadata(elemId, elemAddress));
+                this.otherServersMetadataMap.put(elemId,
+                    new ServerMetadata(elemId, elemAddress));
             }
         }
 
@@ -119,12 +124,14 @@ public class Server implements Runnable {
             System.exit(1);
         }
         listenerThread.start();
-        threadPoolService = Executors.newFixedThreadPool(this.otherServersMetadataMap.size());
+        threadPoolService =
+            Executors.newFixedThreadPool(this.otherServersMetadataMap.size());
 
         this.commitIndex = -1;
         this.lastApplied = -1;
 
-        myLogger.debug(myId + " :: Configuration File Defined To Be :: "+System.getProperty("log4j.configurationFile"));
+        myLogger.debug(myId + " :: Configuration File Defined To Be :: "+
+            System.getProperty("log4j.configurationFile"));
         logMessage("successfully booted");
     }
 
@@ -149,7 +156,8 @@ public class Server implements Runnable {
                 while(keyIterator.hasNext()) {
                     logMessage("about to read");
                     SelectionKey key = keyIterator.next();
-                    Message message = (Message) NetworkUtils.receiveMessage((SocketChannel) key.channel(), true);
+                    Message message = (Message) NetworkUtils.receiveMessage(
+                        (SocketChannel) key.channel(), true);
                     logMessage("received " + message);
                     processMessage(message);
                     keyIterator.remove();
@@ -183,7 +191,8 @@ public class Server implements Runnable {
             // Proj2: consider merging code for sending initial
             // heartbeat messages with code for sending subsequent
             // rounds of heartbeat messages.
-            Message message = new AppendEntriesRequest(myId, persistentState.currentTerm, -1, -1, null, commitIndex);
+            Message message = new AppendEntriesRequest(myId, 
+                persistentState.currentTerm, -1, -1, null, commitIndex);
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
                 saveStateAndSendMessage(meta, message);
             }
@@ -200,14 +209,15 @@ public class Server implements Runnable {
      * @param message message that we want to send to recipient
      * @throws IOException
      */
-    private void saveStateAndSendMessage(ServerMetadata recipientMeta, Message message) throws IOException {
+    private void saveStateAndSendMessage(ServerMetadata recipientMeta, 
+        Message message) throws IOException {
         this.persistentState.save();
         threadPoolService.submit(() -> {
             try {
                 NetworkUtils.sendMessage(recipientMeta.address, message);
             } catch (IOException e) {
                 if (e.getMessage().equals("Connection refused")) {
-                    logMessage("connection to " + recipientMeta.id + " refused");
+                    logMessage("connection to "+recipientMeta.id+" refused");
                 } else {
                     logMessage(e.getMessage());
                 }
@@ -221,7 +231,8 @@ public class Server implements Runnable {
      * @param message any message that we wish to log
      */
     private void logMessage(Object message) {
-        myLogger.info(myId + " :: term=" + this.persistentState.currentTerm + " :: " + role + " :: " + message);
+        myLogger.info(myId + " :: term=" + this.persistentState.currentTerm + 
+            " :: " + role + " :: " + message);
     }
 
     /**
@@ -232,7 +243,7 @@ public class Server implements Runnable {
      */
     private void processMessage(Message message) throws IOException {
         boolean myTermStale = message.term > this.persistentState.currentTerm;
-        boolean senderTermStale = message.term < this.persistentState.currentTerm;
+        boolean senderTermStale = message.term<this.persistentState.currentTerm;
         if (myTermStale) {
             this.persistentState.currentTerm = message.term;
             this.persistentState.votedFor = null;
@@ -242,24 +253,32 @@ public class Server implements Runnable {
             if (!senderTermStale) {
                 this.role.processValidityOfAppendEntriesRequest();
             }
-            boolean success = processEntries((AppendEntriesRequest) message, senderTermStale);
-            AppendEntriesReply reply = new AppendEntriesReply(myId, this.persistentState.currentTerm, success);
-            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
+            boolean success = processEntries((AppendEntriesRequest) message, 
+                senderTermStale);
+            AppendEntriesReply reply = new AppendEntriesReply(myId, 
+                this.persistentState.currentTerm, success);
+            saveStateAndSendMessage(otherServersMetadataMap.get(
+                message.serverId), reply);
         } else if (message instanceof RequestVoteRequest) {
-            boolean grantingVote = grantVote((RequestVoteRequest) message, senderTermStale);
+            boolean grantingVote = grantVote((RequestVoteRequest) message, 
+                senderTermStale);
             if (grantingVote) {
                 assert(this.role instanceof Follower);
                 this.role.resetTimeout();
             }
-            RequestVoteReply reply = new RequestVoteReply(myId, this.persistentState.currentTerm, grantingVote);
-            saveStateAndSendMessage(otherServersMetadataMap.get(message.serverId), reply);
+            RequestVoteReply reply = new RequestVoteReply(myId, 
+                this.persistentState.currentTerm, grantingVote);
+            saveStateAndSendMessage(otherServersMetadataMap.get(
+                message.serverId), reply);
         } else if (message instanceof AppendEntriesReply) {
             if (this.role instanceof Leader) {
-                ((Leader) this.role).processAppendEntriesReply((AppendEntriesReply) message);
+                ((Leader) this.role).processAppendEntriesReply(
+                    (AppendEntriesReply) message);
             }
         } else if (message instanceof RequestVoteReply) {
             if (this.role instanceof Candidate) {
-                ((Candidate) this.role).processRequestVoteReply((RequestVoteReply) message);
+                ((Candidate) this.role).processRequestVoteReply(
+                    (RequestVoteReply) message);
             }
         } else {
             assert(false);
@@ -273,22 +292,26 @@ public class Server implements Runnable {
      * @return true iff sender term is not stale and recipient log
      *         contained entry matching prevLogIndex and prevLogTerm
      */
-    private boolean processEntries(AppendEntriesRequest message, boolean senderTermStale) {
+    private boolean processEntries(AppendEntriesRequest message, 
+        boolean senderTermStale) {
         if (senderTermStale) {
             return false;
         }
         this.leaderId = message.serverId;
 
-        boolean logIndexIsValid = message.prevLogIndex >= 0 && message.prevLogIndex < this.persistentState.log.size();
+        boolean logIndexIsValid = message.prevLogIndex >= 0 && 
+            message.prevLogIndex < this.persistentState.log.size();
         if (!logIndexIsValid) {
             return false;
         }
 
         // Proj2: test this code relating to the log
         // Proj2: check prevLogTerm
-        boolean logTermsMatch = this.persistentState.log.get(message.prevLogIndex).term == message.prevLogTerm;
+        boolean logTermsMatch = this.persistentState.log.get(
+            message.prevLogIndex).term == message.prevLogTerm;
         if (!logTermsMatch) {
-            this.persistentState.log = this.persistentState.log.subList(0, message.prevLogIndex);
+            this.persistentState.log =
+                this.persistentState.log.subList(0, message.prevLogIndex);
             return false;
         }
 
@@ -297,9 +320,11 @@ public class Server implements Runnable {
         if (!this.persistentState.log.contains(message.entry)) {
             this.persistentState.log.add(message.entry);
         }
-        // Proj2: Consider implementing Figure 2, All servers, bullet point 1/2 here
+        // Proj2: Consider implementing Figure 2, All servers, bullet point 1/2
+        //        here
         if (message.leaderCommit > this.commitIndex) {
-            this.commitIndex = Math.min(message.leaderCommit, this.persistentState.log.size() - 1);
+            this.commitIndex = Math.min(message.leaderCommit, 
+                this.persistentState.log.size() - 1);
         }
         return true;
     }
@@ -312,22 +337,28 @@ public class Server implements Runnable {
      *         for the candidate, and candidate's log is at least as
      *         up-to-date as ours.
      */
-    private boolean grantVote(RequestVoteRequest message, boolean senderTermStale) {
+    private boolean grantVote(RequestVoteRequest message, 
+        boolean senderTermStale) {
         if (senderTermStale) {
             return false;
         }
 
-        boolean canVote = this.persistentState.votedFor == null || this.persistentState.votedFor.equals(message.serverId);
+        boolean canVote = this.persistentState.votedFor == null || 
+            this.persistentState.votedFor.equals(message.serverId);
 
         if (!canVote) {
             return false;
         }
 
         int lastLogIndex = this.persistentState.log.size() - 1;
-        int lastLogTerm = lastLogIndex < 0 ? -1 : this.persistentState.log.get(lastLogIndex).term;
-        // Proj2: make sure that this logic is correct for checking that a candidate's
-        // log is at least as up-to-date as ours. Test this logic afterwards
-        boolean candidateLogIsUpdated = message.lastLogIndex >= lastLogIndex && message.lastLogTerm >= lastLogTerm;
+        int lastLogTerm = lastLogIndex < 0 ? 
+                          -1 : 
+                          this.persistentState.log.get(lastLogIndex).term;
+        // Proj2: make sure that this logic is correct for checking that a 
+        //        candidate's log is at least as up-to-date as ours.
+        //        Test this logic afterwards
+        boolean candidateLogIsUpdated = message.lastLogIndex >= lastLogIndex && 
+            message.lastLogTerm >= lastLogTerm;
         if (!candidateLogIsUpdated) {
             return false;
         }
@@ -364,7 +395,8 @@ public class Server implements Runnable {
     // Contains and groups together follower-specific behavior.
     class Follower implements Role {
         public void resetTimeout() {
-            timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
+            timer.reset(ThreadLocalRandom.current().nextInt(
+                MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
         public void performTimeoutAction() throws IOException {
             transitionRole(new Candidate());
@@ -390,7 +422,8 @@ public class Server implements Runnable {
         }
 
         public void resetTimeout() {
-            timer.reset(ThreadLocalRandom.current().nextInt(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
+            timer.reset(ThreadLocalRandom.current().nextInt(
+                MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
 
         /*
@@ -406,7 +439,8 @@ public class Server implements Runnable {
                     -1 : persistentState.log.get(lastLogIndex).term;
 
             logMessage("broadcasting RequestVote requests");
-            Message message = new RequestVoteRequest(myId, persistentState.currentTerm, lastLogIndex, lastLogTerm);
+            Message message = new RequestVoteRequest(myId, 
+                persistentState.currentTerm, lastLogIndex, lastLogTerm);
 
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
                 saveStateAndSendMessage(meta, message);
@@ -422,7 +456,8 @@ public class Server implements Runnable {
          * @param RequestVoteReply reply to RequestVote request
          * @throws IOException
          */
-        public void processRequestVoteReply(RequestVoteReply reply) throws IOException {
+        public void processRequestVoteReply(RequestVoteReply reply) 
+            throws IOException {
             if (reply.voteGranted) {
                 votesReceived += 1;
             }
@@ -457,13 +492,16 @@ public class Server implements Runnable {
          * Send out a round of heartbeat messages to all servers.
          */
         public void performTimeoutAction() throws IOException {
-            // send regular heartbeat messages with zero or more log entries after a heartbeat interval has passed
+            // send regular heartbeat messages with zero or more log entries
+            // after a heartbeat interval has passed
             logMessage("broadcasting heartbeat messages");
 
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
                 // Proj2: send server-tailored messages to each server
-                // Proj2: add suitable log entry (if needed) as argument into AppendEntriesRequest
-                Message message = new AppendEntriesRequest(myId, persistentState.currentTerm, -1, -1, null, commitIndex);
+                // Proj2: add suitable log entry (if needed) as argument into
+                //        AppendEntriesRequest
+                Message message = new AppendEntriesRequest(myId, 
+                    persistentState.currentTerm, -1, -1, null, commitIndex);
                 saveStateAndSendMessage(meta, message);
             }
         }
@@ -509,7 +547,8 @@ public class Server implements Runnable {
                 return false;
             }
             // count is the # of servers with at least candidateN log entries
-            // We include the leader in the count because its log index is >= candidateN
+            // We include the leader in the count because its log index is
+            // >= candidateN
             int count = 1;
             for (ServerMetadata meta : otherServersMetadataMap.values()) {
                 if (meta.matchIndex >= candidateN) {
@@ -519,7 +558,8 @@ public class Server implements Runnable {
             if (count <= otherServersMetadataMap.size() / 2) {
                 return false;
             }
-            if (persistentState.log.get(candidateN).term != persistentState.currentTerm) {
+            if (persistentState.log.get(candidateN).term != 
+                persistentState.currentTerm) {
                 return false;
             }
             return true;
@@ -555,12 +595,15 @@ public class Server implements Runnable {
         }
 
         System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
-        HashMap<String, InetSocketAddress> serverAddressesMap = new HashMap<String, InetSocketAddress>();
+        HashMap<String, InetSocketAddress> serverAddressesMap = 
+            new HashMap<String, InetSocketAddress>();
         for (int i=0; i<allPorts.length; i++) {
-            serverAddressesMap.put("Server" + i, new InetSocketAddress("localhost", Integer.parseInt(allPorts[i])));   
+            serverAddressesMap.put("Server" + i, new 
+                InetSocketAddress("localhost", 
+                    Integer.parseInt(allPorts[i])));   
         }
 
-        Server myServer = new Server("Server" + myPortIndex, serverAddressesMap);
+        Server myServer = new Server("Server"+myPortIndex, serverAddressesMap);
         myServer.run();
     }
 }

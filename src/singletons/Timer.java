@@ -21,6 +21,7 @@ public class Timer {
         if (lastTimeoutTime == null) {
             return true;
         }
-        return Date.from(Instant.now()).getTime() - lastTimeoutTime.getTime() >= timeoutInterval;
+        return Date.from(Instant.now()).getTime() - 
+            lastTimeoutTime.getTime() >= timeoutInterval;
     }
 }
