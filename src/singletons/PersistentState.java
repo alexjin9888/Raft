@@ -1,17 +1,18 @@
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+package singletons;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import misc.LogEntry;
+import utils.ObjectUtils;
+
 /* 
  * A class that manages the persistent state of a server  
  */
+@SuppressWarnings("serial")
 public class PersistentState implements Serializable {
     private static final String BASE_LOG_DIR = System.getProperty("user.dir").toString();
     private static final String LOG_EXT = ".log";

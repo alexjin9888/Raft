@@ -1,3 +1,4 @@
+package singletons;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
@@ -6,7 +7,6 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Set;
 import java.util.Iterator;
-import org.apache.logging.log4j.Logger;
 
 public class ListenerThread extends Thread {
     private ServerSocketChannel acceptChannel;
@@ -32,7 +32,7 @@ public class ListenerThread extends Thread {
                 Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
     
                 while(keyIterator.hasNext()) {
-                    SelectionKey key = keyIterator.next();
+                    keyIterator.next();
                     acceptConnection();
                     keyIterator.remove();
                 }

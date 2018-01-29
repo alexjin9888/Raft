@@ -1,8 +1,10 @@
+package messages;
 /*
  * Reply to AppendEntriesRequest   
  */
+@SuppressWarnings("serial")
 public class AppendEntriesReply extends Message {
-    boolean success;    // true if  follower contained entry matching
+    public boolean success;    // true if  follower contained entry matching
                         // prevLogIndex and prevLogTerm
     public AppendEntriesReply(String serverId, int term, boolean success) {
         super();

@@ -1,15 +1,18 @@
-import java.util.Arrays;
+package messages;
+
+import misc.LogEntry;
 
 /*
  * Invoked by leader to replicate log entries ($5.3); also used as
  * heartbeat ($5.2).
  */
+@SuppressWarnings("serial")
 public class AppendEntriesRequest extends Message {
-    int prevLogIndex; // index of log entry immediately preceding new ones
-    int prevLogTerm;  // term of prevLogIndex entry
-    LogEntry entry;   // log entries to store (empty for heartbeat;
+    public int prevLogIndex; // index of log entry immediately preceding new ones
+    public int prevLogTerm;  // term of prevLogIndex entry
+    public LogEntry entry;   // log entries to store (empty for heartbeat;
                       // may send more than one for efficiency)
-    int leaderCommit; //leader's commitIndex
+    public int leaderCommit; //leader's commitIndex
     public AppendEntriesRequest(String serverId, int term, int prevLogIndex,
         int prevLogTerm, LogEntry entry, int leaderCommit) {
         super();

@@ -1,28 +1,26 @@
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectInputStream;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.text.DateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.time.Instant;
-import java.util.Date;
-import java.util.HashMap;
+import messages.AppendEntriesReply;
+import messages.AppendEntriesRequest;
+import messages.Message;
+import messages.RequestVoteReply;
+import messages.RequestVoteRequest;
+import misc.ServerMetadata;
+import singletons.ListenerThread;
+import singletons.PersistentState;
+import singletons.Timer;
+import utils.NetworkUtils;
 
 /* 
  * The Server class implements features as per the RAFT consensus protocol.
@@ -55,6 +53,7 @@ public class Server implements Runnable {
     private static final int MAX_ELECTION_TIMEOUT = 5000;
 
     private String myId; // Unique identification (Id) per server
+    @SuppressWarnings("unused")
     private String leaderId; // current leader's Id
     private InetSocketAddress myAddress; // Unique address per server
     // * A HashMap that maps each server (excluding myself) to its
@@ -79,6 +78,7 @@ public class Server implements Runnable {
     private int commitIndex;
     // * index of highest log entry applied to state machine (initialized to 0,
     //   increases monotonically)
+    @SuppressWarnings("unused")
     private int lastApplied;
 
     // Tracing and debugging logger
@@ -192,7 +192,7 @@ public class Server implements Runnable {
                         if (myTermStale) {
                             this.persistentState.currentTerm = message.term;
                             this.persistentState.votedFor = null;
-                            this.updateRole(this.new Follower());
+                            this.updateRole(new Follower());
                         }
                         if (message instanceof AppendEntriesRequest) {
                             if (!senderTermStale) {
