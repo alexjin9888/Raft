@@ -16,7 +16,7 @@ public class Timer {
     }
 
     /**
-     * Start or restarts the timer by specifying the timeout interval.
+     * Starts or restarts the timer by specifying the timeout interval.
      * @param timeoutInterval How long we want the timer to go for (in ms)
      */
     public void reset(int timeoutInterval) {
