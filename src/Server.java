@@ -47,7 +47,7 @@ public class Server implements Runnable {
     // corresponding to other servers in the Raft cluster.
     private HashMap<String, ServerMetadata> otherServersMetadataMap;
 
-    /*
+    /**
      * Singletons:
      * * Timer instance is used to manage time for election and
      *   heartbeat timeouts.
@@ -70,7 +70,7 @@ public class Server implements Runnable {
 
     private Role role; // One of follower, candidate, leader
 
-    /*
+    /**
      * Log-specific volatile state:
      * * commitIndex - index of highest log entry known to be committed
      *                 (initialized to 0, increases monotonically)
@@ -110,9 +110,9 @@ public class Server implements Runnable {
         }
 
         myTimer = new Timer();
+        transitionRole(new Follower());
 
         try {
-            transitionRole(new Follower());
             persistentState = new PersistentState(myId);
             listenerThread = new ListenerThread(myAddress);
         } catch (IOException e) {
@@ -135,36 +135,42 @@ public class Server implements Runnable {
         logMessage("successfully booted");
     }
 
-    /* 
+    /** 
      * Starts an event loop on the main thread where we:
      * 1) Perform timeout actions depending on remaining time and role.
      * 2) Process incoming requests as they arrive.
      */
     public void run() {
         Selector readSelector = listenerThread.getReadSelector();
-        try {
-            while (true) {
-                if (myTimer.timeIsUp()) {
-                    this.role.performTimeoutAction();
-                    this.role.resetTimeout();
-                }
+        while (true) {
+            if (myTimer.timeIsUp()) {
+                this.role.performTimeoutAction();
+                this.role.resetTimeout();
+            }
 
+            try {
                 readSelector.selectNow();
-                Set<SelectionKey> selectedKeys = readSelector.selectedKeys();
-                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+            } catch (IOException e) {
+                logMessage(e.getMessage());
+                continue;
+            }
+            Set<SelectionKey> selectedKeys = readSelector.selectedKeys();
+            Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
-                while(keyIterator.hasNext()) {
-                    logMessage("about to read");
-                    SelectionKey key = keyIterator.next();
+            while(keyIterator.hasNext()) {
+                logMessage("about to read");
+                SelectionKey key = keyIterator.next();
+                keyIterator.remove();
+                try {
                     Message message = (Message) NetworkUtils.receiveMessage(
-                        (SocketChannel) key.channel(), true);
+                            (SocketChannel) key.channel(), true);
                     logMessage("received " + message);
                     processMessage(message);
-                    keyIterator.remove();
+                } catch (IOException e) {
+                    logMessage(e.getMessage());
+                    continue;
                 }
             }
-        } catch (IOException e) {
-            logMessage(e.getMessage());
         }
     }
 
@@ -173,9 +179,8 @@ public class Server implements Runnable {
      * Depending on new role, there may be some post-transition
      * behavior that will need to be run.
      * @param role new role that the server instance transitions to. 
-     * @throws IOException
      */
-    private void transitionRole(Role role) throws IOException {
+    private void transitionRole(Role role) {
         this.role = role;
 
         if (this.role instanceof Candidate) {
@@ -207,22 +212,28 @@ public class Server implements Runnable {
      * any network requests to recipients.
      * @param recipientMeta recipient metadata
      * @param message message that we want to send to recipient
-     * @throws IOException
      */
     private void saveStateAndSendMessage(ServerMetadata recipientMeta, 
-        Message message) throws IOException {
-        this.persistentState.save();
-        threadPoolService.submit(() -> {
-            try {
-                NetworkUtils.sendMessage(recipientMeta.address, message);
-            } catch (IOException e) {
-                if (e.getMessage().equals("Connection refused")) {
-                    logMessage("connection to "+recipientMeta.id+" refused");
-                } else {
-                    logMessage(e.getMessage());
+        Message message) {
+        // If I experience an I/O error while saving the persistent state,
+        // don't try to send the request.
+        try {
+            this.persistentState.save();
+            threadPoolService.submit(() -> {
+                try {
+                    NetworkUtils.sendMessage(recipientMeta.address, message);
+                } catch (IOException e) {
+                    if (e.getMessage().equals("Connection refused")) {
+                        logMessage("connection to " + recipientMeta.id +
+                                   " refused");
+                    } else {
+                        logMessage(e.getMessage());
+                    }
                 }
-            }
-        });
+            });   
+        } catch (IOException e) {
+            logMessage(e.getMessage());
+        }
     }
 
     /**
@@ -239,9 +250,8 @@ public class Server implements Runnable {
      * Processes an incoming request message and conditionally sends
      * a reply depending on type of message.
      * @param message incoming request message
-     * @throws IOException
      */
-    private void processMessage(Message message) throws IOException {
+    private void processMessage(Message message) {
         boolean myTermStale = message.term > this.persistentState.currentTerm;
         boolean senderTermStale = message.term<this.persistentState.currentTerm;
         if (myTermStale) {
@@ -380,16 +390,14 @@ public class Server implements Runnable {
 
         /**
          * Performs timeout action after timer's timeout occurred.
-         * @throws IOException
          */
-        void performTimeoutAction() throws IOException;
+        void performTimeoutAction();
 
         /**
          * Called if AppendEntriesRequest is valid, so that the server
          * can react accordingly.
-         * @throws IOException
          */
-        void processValidityOfAppendEntriesRequest() throws IOException;
+        void processValidityOfAppendEntriesRequest();
     }
 
     // Contains and groups together follower-specific behavior.
@@ -398,10 +406,10 @@ public class Server implements Runnable {
             myTimer.reset(ThreadLocalRandom.current().nextInt(
                 MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
-        public void performTimeoutAction() throws IOException {
+        public void performTimeoutAction() {
             transitionRole(new Candidate());
         }
-        public void processValidityOfAppendEntriesRequest() throws IOException {
+        public void processValidityOfAppendEntriesRequest() {
             this.resetTimeout();
         }
         @Override
@@ -429,7 +437,7 @@ public class Server implements Runnable {
         /**
          * Starts a new election.
          */
-        public void performTimeoutAction() throws IOException {
+        public void performTimeoutAction() {
             persistentState.currentTerm += 1;
             this.votesReceived = 1;
             persistentState.votedFor = myId;
@@ -446,7 +454,7 @@ public class Server implements Runnable {
                 saveStateAndSendMessage(meta, message);
             }
         }
-        public void processValidityOfAppendEntriesRequest() throws IOException {
+        public void processValidityOfAppendEntriesRequest() {
             transitionRole(new Follower());
         }
 
@@ -454,10 +462,8 @@ public class Server implements Runnable {
          * Candidate-specific method to process RequestVoteReply
          * message.
          * @param RequestVoteReply reply to RequestVote request
-         * @throws IOException
          */
-        public void processRequestVoteReply(RequestVoteReply reply) 
-            throws IOException {
+        public void processRequestVoteReply(RequestVoteReply reply) {
             if (reply.voteGranted) {
                 votesReceived += 1;
             }
@@ -491,7 +497,7 @@ public class Server implements Runnable {
         /** 
          * Send out a round of heartbeat messages to all servers.
          */
-        public void performTimeoutAction() throws IOException {
+        public void performTimeoutAction() {
             // send regular heartbeat messages with zero or more log entries
             // after a heartbeat interval has passed
             logMessage("broadcasting heartbeat messages");
@@ -506,7 +512,7 @@ public class Server implements Runnable {
             }
         }
 
-        public void processValidityOfAppendEntriesRequest() throws IOException {
+        public void processValidityOfAppendEntriesRequest() {
             // As a leader, server should always downgrade to follower
             // prior to processing a valid request.
             assert(false);
@@ -516,7 +522,6 @@ public class Server implements Runnable {
          * Leader-specific method to process AppendEntriesReply
          * message.
          * @param AppendEntriesReply reply to AppendEntriesReply request
-         * @throws IOException
          */
         public void processAppendEntriesReply(AppendEntriesReply reply) {
             // Proj2: write logic to handle AppendEntries message (as leader)

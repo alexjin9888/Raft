@@ -37,7 +37,7 @@ public class ListenerThread extends Thread {
         readSelector = Selector.open();
     }
 
-    /* 
+    /** 
      * Starts an event loop on the main thread where we:
      * 1) Accept incoming connections as they arrive.
      * 2) Register channels to later read from when a connection is established.
