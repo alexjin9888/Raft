@@ -17,10 +17,10 @@ import messages.AppendEntriesRequest;
 import messages.Message;
 import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
-import misc.ServerMetadata;
 import singletons.ListenerThread;
 import singletons.PersistentState;
 import singletons.Timer;
+import units.ServerMetadata;
 import utils.NetworkUtils;
 
 

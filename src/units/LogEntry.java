@@ -1,4 +1,4 @@
-package misc;
+package units;
 
 /**
  * A log entry in a server's command log.

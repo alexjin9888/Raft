@@ -1,6 +1,6 @@
 package messages;
 
-import misc.LogEntry;
+import units.LogEntry;
 
 /**
  * Sent by leader to other servers to replicate log entries ($5.3); also used
