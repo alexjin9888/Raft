@@ -2,19 +2,16 @@ package misc;
 import java.net.InetSocketAddress;
 
 /**
- * Implementation of state of each server
- * See RAFT figure 2 for detailed descriptions
+ * An instance of this class is created for every other server in the Raft
+ * cluster. These instances are used to help the running server read properties
+ * and keep track of state corresponding to the other servers.
  */
 public class ServerMetadata {
-    // Each server has a unique id
-    public String id;
-    // address    Each server has a unique address (port)
-    public InetSocketAddress address;
-    // nextIndex  Index of the next log entry to send to that server
-    //            (initialized to leader last log index + 1)
+    public String id; // Each server has a unique id
+    public InetSocketAddress address; // Each server has a unique address
+    // Index of the next log entry to send to that server
     public int nextIndex;
-    // matchIndex Index of highest log entry known to be replicated on server 
-    //            (initialized to 0, increases monotonically)
+    // Index of highest log entry known to be replicated on server 
     public int matchIndex;
 
     /**

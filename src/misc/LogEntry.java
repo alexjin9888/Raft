@@ -1,14 +1,12 @@
 package misc;
 
 /**
- * Each instance of LogEntry class corresponds to a log.
- * Proj2: figure out what to do with command
+ * A log entry in a server's command log.
+ * Proj2: figure out what to do with command string
  */
 public class LogEntry {
-    // To be executed on each server
-    public String command;
-    // term of the leader when it sent this log
-    public int term;
+    public String command; // To be executed on each server
+    public int term; // term of the leader when it sent this log
 
     /**
      * @param command see above

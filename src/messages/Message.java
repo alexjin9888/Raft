@@ -2,14 +2,11 @@ package messages;
 import java.io.Serializable;
 
 /**
- * Abstract Class which includes common fields of different messages that are
- * sent and received among servers.
+ * Class used to house common fields of different messages that are sent and
+ * received among servers.
  */
 @SuppressWarnings("serial")
 public abstract class Message implements Serializable {
-    /** 
-     * serverId ID of the server sending this message
-     */
-    public String serverId;
+    public String serverId; // ID of the server sending this message
     public int term; // currentTerm of the sender
 }

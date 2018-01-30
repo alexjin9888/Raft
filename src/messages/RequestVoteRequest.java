@@ -1,6 +1,6 @@
 package messages;
 /**
- * Initiated and sent by candidates to gather votes ($5.2)
+ * Instances are sent by candidates to other servers to gather votes ($5.2)
  */
 @SuppressWarnings("serial")
 public class RequestVoteRequest extends Message {
@@ -10,8 +10,8 @@ public class RequestVoteRequest extends Message {
     public int lastLogTerm;
 
     /**
-     * @param serverId     ID of the leader who is sending this request
-     * @param term         My current term
+     * @param serverId     see Message.java
+     * @param term         see Message.java
      * @param lastLogIndex see above
      * @param lastLogTerm  see above
      */

@@ -8,39 +8,34 @@ import java.nio.channels.SocketChannel;
 import messages.Message;
 
 /**
- * Handles sending and receiving messages over socket channels
+ * Handles the sending and receiving of messages over socket channels
  */
 public class NetworkUtils {
 
     /**
-     * size of buffer for reading/writing from/to a server (in bytes)
-     * Proj2: currently, we assume all messages are <= 1024 bytes
-     * Figure out a better way to determine the right buffer size
+     * Size of buffer for reading/writing from/to a server (in bytes)
+     * Proj2: currently, all messages are <= 1024 bytes. Figure out a better
+     * way to determine the right buffer size once we start sending log entries
+     * with our messages.
      */
     private static final int BUFFER_SIZE = 1024;
 
     /**
+     * Sends a full message to the specified address.
+     * If we receive an IOException while 
      * @param address      Recipient address
      * @param message      message to be sent
-     * @throws IOException
-     * Sends a full message from a channel
-     * If we receive an IOException while trying to establish a connection
-     * (e.g., target server is down), or while writing (e.g., target server goes
-     * down while transmitting data), then we throw the error for the method
-     * caller to handle
+     * @throws IOException May be thrown while trying to establish a
+     *                     connection (e.g., recipient server is down), or
+     *                     while writing (e.g., recipient server goes down
+     *                     while we're transmitting data to them)
      */
     public static void sendMessage(InetSocketAddress address, Message message) 
         throws IOException {
 
-        /**
-         * Create a channel to send message
-         */
         SocketChannel socketChannel = SocketChannel.open(address);
         socketChannel.configureBlocking(false);
         
-       /**
-        * Create a buffer to store serialized message
-        */
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         
         buffer.clear();
@@ -54,23 +49,17 @@ public class NetworkUtils {
     }
     
     /**
-     * @param channel      Read a message from channel
+     * Reads a full message from the specified channel.
+     * Most of the time, users will want to close the channel after reading
+     * the full message.
+     * @param channel      Channel from which there may be a message to read.
      * @param closeChannel Whether to close the channel after reading
-     * @return             Message read
-     * @throws IOException
-     * Reads a full message from a channel
-     * Most of the time, we will want to close the channel after
-     * reading the full message.
-     * If we receive an IOException while reading (e.g., requester goes down 
-     * while receiving data), then we throw the error for the method caller to
-     * handle
+     * @return             Sender message object
+     * @throws IOException May be thrown while reading (e.g., requester goes
+     *                     down while transmitting data to us)
      */
     public static Message receiveMessage(SocketChannel channel, 
         boolean closeChannel) throws IOException {
-       /**
-        *  Create a buffer to store request data and write the incoming
-        *  message to messageBytesStream
-        */
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         ByteArrayOutputStream messageBytesStream = new ByteArrayOutputStream();
 
@@ -84,9 +73,7 @@ public class NetworkUtils {
             bytesRead = channel.read(buffer);
         }
         messageBytesStream.flush();
-        /**
-         *  Create a byte array to get the stream ready for deserialization
-         */
+
         byte[] messageBytes =  messageBytesStream.toByteArray();
         messageBytesStream.close();
         

@@ -11,37 +11,38 @@ import utils.ObjectUtils;
 
 /**
  * An instance of this class is used to manage the persistent state of a server
- * See RAFT figure 2
  */
 public class PersistentState implements Serializable {
     
     // Class versioning to support state serialization/deserialization
     private static final long serialVersionUID = 1L;
-    // Tells us where logs are stored
-    private static final String BASE_LOG_DIR =
-        System.getProperty("user.dir").toString();
-    private static final String LOG_EXT = ".log";
     
-    // Unique identification (Id) per server
+    // Directory used to store the persistent state files
+    private static final String BASE_PS_DIR =
+        System.getProperty("user.dir").toString();
+    // Extension used for persistent state files
+    private static final String PS_EXT = ".log";
+    
+    // Unique identification (Id) of server
     private String myId;
     // term of current leader
     public int currentTerm;
-    // serverID that I voted for during the current election term
+    // serverID that this server voted for during the current election term
     public String votedFor;
-    // replicated logs on my server
+    // List of the server's log entries
     public List<LogEntry> log;
 
     /**
+     * Creates an object that manages persistent state for the server
      * @param myId
      * @throws IOException
-     * Creates an object that manages persistent state for server with ID=myId
-     * During instantiation, it will do 1 of 2 things:
-     *   1) If persistent state file exists, load it
-     *   2) Otherwise initialize persistent state variables
      */
     public PersistentState(String myId) throws IOException {
+        // During instantiation, it will do 1 of 2 things:
+        //   1) If persistent state file exists, load it
+        //   2) Otherwise initialize persistent state variables
         this.myId = myId;
-        if (!Files.exists(Paths.get(BASE_LOG_DIR, myId + LOG_EXT))) {
+        if (!Files.exists(Paths.get(BASE_PS_DIR, myId + PS_EXT))) {
             this.currentTerm = 0;
             this.votedFor = null;
             this.log = new ArrayList<LogEntry>();
@@ -51,23 +52,22 @@ public class PersistentState implements Serializable {
     }
 
     /**
-     * @throws IOException
      * Writes to file the current persistent state of this server
+     * @throws IOException
      */
     public void save() throws IOException {
-        Files.write(Paths.get(BASE_LOG_DIR, myId + LOG_EXT), 
+        Files.write(Paths.get(BASE_PS_DIR, myId + PS_EXT), 
             ObjectUtils.serializeObject(this));
     }
 
     /**
+     * Load from file the persistent state of this server.
+     * Precondition: the file with persistent state exists.
      * @throws IOException
-     * Load from file the persistent state of this server
-     *  * invariant: the file with persistent state exists
-     *     * precondition: the file with persistent state exists
      */
     private void load() throws IOException {
-        byte[] persistentStateBytes = Files.readAllBytes(Paths.get(BASE_LOG_DIR,
-            myId + LOG_EXT));
+        byte[] persistentStateBytes = Files.readAllBytes(Paths.get(BASE_PS_DIR,
+            myId + PS_EXT));
 
         PersistentState loadedPersistentState = (PersistentState) 
             ObjectUtils.deserializeObject(persistentStateBytes);

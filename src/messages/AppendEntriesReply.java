@@ -1,6 +1,6 @@
 package messages;
 /**
- * Reply to AppendEntriesRequest
+ * Instances of this class serve as reply to AppendEntries request
  */
 @SuppressWarnings("serial")
 public class AppendEntriesReply extends Message {
@@ -9,8 +9,8 @@ public class AppendEntriesReply extends Message {
      */
     public boolean success;
     /**
-     * @param serverId ID of server sending the reply
-     * @param term     my current term
+     * @param serverId see Message.java
+     * @param term     see Message.java
      * @param success  see above
      */
     public AppendEntriesReply(String serverId, int term, boolean success) {

@@ -4,12 +4,12 @@ package messages;
  */
 @SuppressWarnings("serial")
 public class RequestVoteReply extends Message {
-    // For the same election term, grant vote once first come first serve
+    // Flag that indicates whether we grant the vote to the candidate
     public boolean voteGranted;
 
     /**
-     * @param serverId    ID of server sending the reply
-     * @param term        my current term
+     * @param serverId    see Message.java
+     * @param term        see Message.java
      * @param voteGranted see above
      */
     public RequestVoteReply(String serverId, int term, boolean voteGranted) {

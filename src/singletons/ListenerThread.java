@@ -9,23 +9,21 @@ import java.util.Set;
 import java.util.Iterator;
 
 /**
- * A thread that handles accepts
- * When a server boots up, it creates a server socket channel using this class
- * and polls for incoming connections. After establishing a connection, it
- * exposes a read selector which we can use to query read-ready channels that
- * have data to read.
+ * A thread that starts up and manages a connection listener channel.
+ * It accepts connections and then exposes a selector which can be queried for
+ * read-ready events.
  */
 public class ListenerThread extends Thread {
-    // acceptChannel  The channel for incoming messages
+    // The channel that will handle incoming messages
     private ServerSocketChannel acceptChannel;
-    // acceptSelector Selector for all accepts
+    // Selector that can be queried for accept-ready events
     private Selector acceptSelector;
-    // readSelector   Register channels to read from using this selector
+    // Selector for which we register channels on to later read from
     private Selector readSelector;
     
     /**
      * The constructor creates a channel and listens for incoming connections
-     * (nonblocking mode) using this.
+     * using this channel. Note that this constructor does not block.
      * @param address The address that server listens at
      * @throws IOException
      */
@@ -39,11 +37,10 @@ public class ListenerThread extends Thread {
         readSelector = Selector.open();
     }
 
-    /* (non-Javadoc)
-     * @see java.lang.Thread#run()
+    /* 
      * Starts an event loop on the main thread where we:
-     * 1) Continuously poll of incoming connections.
-     * 2) Register read-ready channel when a connection is established.
+     * 1) Accept incoming connections as they arrive.
+     * 2) Register channels to later read from when a connection is established.
      */
     public void run() {
         try {
@@ -74,7 +71,8 @@ public class ListenerThread extends Thread {
     }
 
     /**
-     * Helper function to accept an incoming connection in non-blocking mode
+     * Helper function to accept an incoming connection in non-blocking mode.
+     * It registers the associated channel on the read-events selector.
      * @throws IOException
      */
     private void acceptConnection() throws IOException {

@@ -7,11 +7,12 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
 /**
- * ObjectUtils class to help with object serialization and deserialization
+ * Helper class for object serialization and deserialization.
  */
 public class ObjectUtils {
 
     /**
+     * Serializes an serializable object into a sequence of bytes.
      * @param object       object to be serialized
      * @return             a byte array representing the serialized object
      * @throws IOException
@@ -32,6 +33,7 @@ public class ObjectUtils {
     }
     
     /**
+     * Deserializes a sequence of bytes into a serializable object.
      * @param objectBytes  a byte array to be deserialized
      * @return             an object created from deserializing the byte array
      * @throws IOException

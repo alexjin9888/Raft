@@ -320,8 +320,8 @@ public class Server implements Runnable {
         if (!this.persistentState.log.contains(message.entry)) {
             this.persistentState.log.add(message.entry);
         }
-        // Proj2: Consider implementing Figure 2, All servers, bullet point 1/2
-        //        here
+        // Proj2: See Figure 2, All servers section. Consider implementing the
+        // the items mentioned there here.
         if (message.leaderCommit > this.commitIndex) {
             this.commitIndex = Math.min(message.leaderCommit, 
                 this.persistentState.log.size() - 1);
@@ -426,7 +426,7 @@ public class Server implements Runnable {
                 MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
         }
 
-        /*
+        /**
          * Starts a new election.
          */
         public void performTimeoutAction() throws IOException {
@@ -488,7 +488,7 @@ public class Server implements Runnable {
             myTimer.reset(HEARTBEAT_INTERVAL);
         }
 
-        /* 
+        /** 
          * Send out a round of heartbeat messages to all servers.
          */
         public void performTimeoutAction() throws IOException {
@@ -582,6 +582,7 @@ public class Server implements Runnable {
         int[] allPorts = null;
         boolean validArgs = true;
 
+        // This if-else block checks to see if supplied arguments are valid.
         if (args.length != 2) {
             validArgs = false;
         } else {
@@ -601,7 +602,8 @@ public class Server implements Runnable {
         }
         if (!validArgs) {
             System.out.println("Please supply exactly two valid arguments");
-            System.out.println("Usage: <port0>,<port1>,... <myPortIndex>");
+            System.out.println(
+                "Usage: <port0>,<port1>,...,<port$n-1$> <myPortIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
         }

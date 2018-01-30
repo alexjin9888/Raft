@@ -3,14 +3,11 @@ import java.time.Instant;
 import java.util.Date;
 
 /**
- * Timer class that implements timeout logic for
- *   1) Election Timeout for Followers and Candidates
- *   2) Heartbeat Timeout for leaders
- *   See RAFT spec for more detailed descriptions
+ * An instance of this class functions as a timer.
  */
 public class Timer {
-    private Date lastTimeoutTime;
-    private int timeoutInterval;
+    private Date lastTimeoutTime; // last absolute reset time
+    private int timeoutInterval; // user-specified timeout interval
 
     public Timer() {
         super();
@@ -19,7 +16,8 @@ public class Timer {
     }
 
     /**
-     * @param timeoutInterval time we will wait until next timeout
+     * Start or restarts the timer by specifying the timeout interval.
+     * @param timeoutInterval How long we want the timer to go for (in ms)
      */
     public void reset(int timeoutInterval) {
         this.lastTimeoutTime = Date.from(Instant.now());
@@ -27,7 +25,8 @@ public class Timer {
     }
     
     /** 
-     * @return whether timeoutInterval has passed since lastTimeoutTime
+     * Tells you whether the timer has finished counted down.
+     * @return true iff the timer has finished counting down.
      */
     public boolean timeIsUp() {
         if (lastTimeoutTime == null) {
