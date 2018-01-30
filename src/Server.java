@@ -110,10 +110,10 @@ public class Server implements Runnable {
         }
 
         myTimer = new Timer();
-        transitionRole(new Follower());
 
         try {
             persistentState = new PersistentState(myId);
+            transitionRole(new Follower());
             listenerThread = new ListenerThread(myAddress);
         } catch (IOException e) {
             if (e.getMessage().equals("Address already in use")) {
@@ -181,6 +181,7 @@ public class Server implements Runnable {
      * @param role new role that the server instance transitions to. 
      */
     private void transitionRole(Role role) {
+        logMessage("transitioning to " + role);
         this.role = role;
 
         if (this.role instanceof Candidate) {
@@ -275,6 +276,7 @@ public class Server implements Runnable {
             if (grantingVote) {
                 assert(this.role instanceof Follower);
                 this.role.resetTimeout();
+                logMessage("granting vote to " + message.serverId);
             }
             RequestVoteReply reply = new RequestVoteReply(myId, 
                 this.persistentState.currentTerm, grantingVote);
@@ -446,7 +448,7 @@ public class Server implements Runnable {
             int lastLogTerm = lastLogIndex < 0 ?
                     -1 : persistentState.log.get(lastLogIndex).term;
 
-            logMessage("broadcasting RequestVote requests");
+            logMessage("new election - broadcasting RequestVote requests");
             Message message = new RequestVoteRequest(myId, 
                 persistentState.currentTerm, lastLogIndex, lastLogTerm);
 
@@ -530,6 +532,7 @@ public class Server implements Runnable {
                 meta.matchIndex = meta.nextIndex;
                 meta.nextIndex += 1;
                 if (testMajorityN(meta.matchIndex)) {
+                    logMessage("updating commitIndex to " + meta.matchIndex);
                     commitIndex = meta.matchIndex;
                 }
             } else {
