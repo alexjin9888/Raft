@@ -30,12 +30,12 @@ import utils.NetworkUtils;
  */
 public class Server implements Runnable {
 
-    private static final int HEARTBEAT_INTERVAL = 1000;
+    private static final int HEARTBEAT_INTERVAL = 1000; // in ms
 
     // The election timeout is a random variable with the distribution
     // Uniform(min. election timeout, max election timeout).
-    private static final int MIN_ELECTION_TIMEOUT = 3000;
-    private static final int MAX_ELECTION_TIMEOUT = 5000;
+    private static final int MIN_ELECTION_TIMEOUT = 5000; // in ms
+    private static final int MAX_ELECTION_TIMEOUT = 10000; // in ms
 
     private String myId; // unique id
     @SuppressWarnings("unused")
