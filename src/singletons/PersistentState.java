@@ -33,14 +33,13 @@ public class PersistentState implements Serializable {
     public List<LogEntry> log;
 
     /**
-     * Creates an object that manages persistent state for the server
+     * Creates an object that manages persistent state for the server.
+     * Loads the persistent state of the server if it exists.
+     * Otherwise, initializes the persistent state from scratch.
      * @param myId
      * @throws IOException
      */
     public PersistentState(String myId) throws IOException {
-        // During instantiation, it will do 1 of 2 things:
-        //   1) If persistent state file exists, load it
-        //   2) Otherwise initialize persistent state variables
         this.myId = myId;
         if (!Files.exists(Paths.get(BASE_PS_DIR, myId + PS_EXT))) {
             this.currentTerm = 0;

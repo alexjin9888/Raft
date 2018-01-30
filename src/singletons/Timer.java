@@ -25,7 +25,7 @@ public class Timer {
     }
     
     /** 
-     * Tells you whether the timer has finished counted down.
+     * Tells you whether the timer has finished counting down.
      * @return true iff the timer has finished counting down.
      */
     public boolean timeIsUp() {
