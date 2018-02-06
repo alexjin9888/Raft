@@ -3,11 +3,14 @@ package messages;
 import units.LogEntry;
 
 /**
- * Sent by leader to other servers to replicate log entries ($5.3); also used
- * as a heartbeat ($5.2).
+ * This class defines the message format of an AppendEntries request.
  */
-@SuppressWarnings("serial")
-public class AppendEntriesRequest extends Message {
+public class AppendEntriesRequest extends RaftMessage {
+    /**
+     * Class versioning to support instance serialization/deserialization
+     */
+    private static final long serialVersionUID = 1L;
+
     // index of log entry immediately preceding new ones
     public int prevLogIndex;
     // term of prevLogIndex entry
@@ -27,9 +30,7 @@ public class AppendEntriesRequest extends Message {
      */
     public AppendEntriesRequest(String serverId, int term, int prevLogIndex,
         int prevLogTerm, LogEntry entry, int leaderCommit) {
-        super();
-        this.serverId = serverId;
-        this.term = term;
+        super(serverId, term);
         this.prevLogIndex = prevLogIndex;
         this.prevLogTerm = prevLogTerm;
         this.entry = entry;

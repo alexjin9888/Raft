@@ -19,7 +19,6 @@ public class ServerMetadata {
      * @param address see above
      */
     public ServerMetadata(String id, InetSocketAddress address) {
-        super();
         this.id = id;
         this.address = address;
         this.nextIndex = 0;

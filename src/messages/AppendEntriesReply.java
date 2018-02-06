@@ -1,27 +1,29 @@
 package messages;
 /**
- * Instances of this class serve as reply to AppendEntries request
+ * This class defines the message format of an AppendEntries reply.
  */
-@SuppressWarnings("serial")
-public class AppendEntriesReply extends Message {
+public class AppendEntriesReply extends RaftMessage {
+    /**
+     * Class versioning to support instance serialization/deserialization
+     */
+    private static final long serialVersionUID = 1L;
+
     /** 
      * true iff follower contained entry matching prevLogIndex and prevLogTerm
      */
-    public boolean success;
+    public boolean successfulAppend;
     /**
-     * @param serverId see Message.java
-     * @param term     see Message.java
-     * @param success  see above
+     * @param serverId          see Message.java
+     * @param term              see Message.java
+     * @param successfulAppend  see above
      */
-    public AppendEntriesReply(String serverId, int term, boolean success) {
-        super();
-        this.serverId = serverId;
-        this.term = term;
-        this.success = success;
+    public AppendEntriesReply(String serverId, int term, boolean successfulAppend) {
+        super(serverId, term);
+        this.successfulAppend = successfulAppend;
     }
     @Override
     public String toString() {
-        return "AppendEntriesReply [term=" + term + ", success=" + success
-                + "]";
+        return "AppendEntriesReply [term=" + term + ", successfulAppend="
+                + successfulAppend + "]";
     }
 }

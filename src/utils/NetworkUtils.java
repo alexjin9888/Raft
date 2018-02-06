@@ -1,16 +1,17 @@
 package utils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
-import messages.Message;
+import messages.RaftMessage;
 
 /**
  * Handles the sending and receiving of messages over socket channels
  */
-public class NetworkUtils {
+public abstract class NetworkUtils {
 
     /**
      * Size of buffer for reading/writing from/to a server (in bytes)
@@ -21,8 +22,7 @@ public class NetworkUtils {
     private static final int BUFFER_SIZE = 1024;
 
     /**
-     * Sends a full message to the specified address.
-     * If we receive an IOException while 
+     * Sends a full serializable object to the specified address.
      * @param address      Recipient address
      * @param message      message to be sent
      * @throws IOException May be thrown while trying to establish a
@@ -30,36 +30,34 @@ public class NetworkUtils {
      *                     while writing (e.g., recipient server goes down
      *                     while we're transmitting data to them)
      */
-    public static void sendMessage(InetSocketAddress address, Message message) 
+    public static void sendSerializable(InetSocketAddress address, Serializable object) 
         throws IOException {
 
         SocketChannel socketChannel = SocketChannel.open(address);
-        socketChannel.configureBlocking(false);
+        socketChannel.configureBlocking(true);
         
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         
         buffer.clear();
-        buffer.put(ObjectUtils.serializeObject(message));
+        buffer.put(SerializationUtils.serialize(object));
         buffer.flip();
         while(buffer.hasRemaining()) {
             socketChannel.write(buffer);
         }
         
+        // TODO: Figure out where to close the channel that we opened above in
+        // event that an exception is thrown before the next line is run.
         socketChannel.close();
     }
     
     /**
-     * Reads a full message from the specified channel.
-     * Most of the time, users will want to close the channel after reading
-     * the full message.
+     * Reads a full serializable object from the specified channel.
      * @param channel      Channel from which there may be a message to read.
-     * @param closeChannel Whether to close the channel after reading
-     * @return             Sender message object
      * @throws IOException May be thrown while reading (e.g., requester goes
      *                     down while transmitting data to us)
      */
-    public static Message receiveMessage(SocketChannel channel, 
-        boolean closeChannel) throws IOException {
+    public static Serializable receiveSerializable(SocketChannel channel)
+            throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
         ByteArrayOutputStream messageBytesStream = new ByteArrayOutputStream();
 
@@ -77,10 +75,6 @@ public class NetworkUtils {
         byte[] messageBytes =  messageBytesStream.toByteArray();
         messageBytesStream.close();
         
-        if (closeChannel) {
-            channel.close();
-        }
-        
-        return (Message) ObjectUtils.deserializeObject(messageBytes);
+        return SerializationUtils.deserialize(messageBytes);
     }
 }

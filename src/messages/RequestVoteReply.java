@@ -1,26 +1,30 @@
 package messages;
 /**
- * Reply to RequestVote request
+ * This class defines the message format of a RequestVote reply.
  */
-@SuppressWarnings("serial")
-public class RequestVoteReply extends Message {
-    // Flag that indicates whether we grant the vote to the candidate
-    public boolean voteGranted;
+public class RequestVoteReply extends RaftMessage {
+    /**
+     * Class versioning to support instance serialization/deserialization
+     */
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * Flag that indicates whether we grant the vote to the candidate
+     */
+    public boolean grantVote;
 
     /**
      * @param serverId    see Message.java
      * @param term        see Message.java
-     * @param voteGranted see above
+     * @param grantVote see above
      */
-    public RequestVoteReply(String serverId, int term, boolean voteGranted) {
-        super();
-        this.serverId = serverId;
-        this.term = term;
-        this.voteGranted = voteGranted;
+    public RequestVoteReply(String serverId, int term, boolean grantVote) {
+        super(serverId, term);
+        this.grantVote = grantVote;
     }
     @Override
     public String toString() {
-        return "RequestVoteReply [term=" + term + ", voteGranted=" + voteGranted
+        return "RequestVoteReply [term=" + term + ", grantVote=" + grantVote
                 + "]";
     }
 }

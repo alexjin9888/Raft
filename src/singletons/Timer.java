@@ -7,7 +7,7 @@ import java.util.Date;
  */
 public class Timer {
     private Date lastTimeoutTime; // last absolute reset time
-    private int timeoutInterval; // user-specified timeout interval
+    private int timeoutInterval; // user-specified timeout interval (in ms)
 
     public Timer() {
         super();

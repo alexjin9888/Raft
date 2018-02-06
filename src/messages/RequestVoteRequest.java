@@ -1,9 +1,13 @@
 package messages;
 /**
- * Instances are sent by candidates to other servers to gather votes ($5.2)
+ * This class defines the message format of a RequestVote request.
  */
-@SuppressWarnings("serial")
-public class RequestVoteRequest extends Message {
+public class RequestVoteRequest extends RaftMessage {
+    /**
+     * Class versioning to support instance serialization/deserialization
+     */
+    private static final long serialVersionUID = 1L;
+
     // index of candidate’s last log entry (§5.4)
     public int lastLogIndex;
     // term of candidate’s last log entry (§5.4)
@@ -17,9 +21,7 @@ public class RequestVoteRequest extends Message {
      */
     public RequestVoteRequest(String serverId, int term, int lastLogIndex,
         int lastLogTerm) {
-        super();
-        this.serverId = serverId;
-        this.term = term;
+        super(serverId, term);
         this.lastLogIndex = lastLogIndex;
         this.lastLogTerm = lastLogTerm;
     }

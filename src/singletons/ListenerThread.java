@@ -7,6 +7,8 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Set;
 import java.util.Iterator;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * A thread that starts up and manages a connection listener channel.
@@ -20,6 +22,12 @@ public class ListenerThread extends Thread {
     private Selector acceptSelector;
     // Selector for which we register channels on to later read from
     private Selector readSelector;
+
+    /**
+     * Tracing and debugging logger;
+     * see: https://logging.apache.org/log4j/2.x/manual/api.html
+     */
+    private static final Logger myLogger = LogManager.getLogger();
     
     /**
      * The constructor creates a channel and listens for incoming connections
@@ -43,21 +51,33 @@ public class ListenerThread extends Thread {
      * 2) Register channels to later read from when a connection is established.
      */
     public void run() {
-        try {
-            while(true) {
+        while(true) {
+            try {
                 acceptSelector.select();
-                Set<SelectionKey> selectedKeys = acceptSelector.selectedKeys();
-    
-                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-    
-                while(keyIterator.hasNext()) {
-                    keyIterator.next();
-                    acceptConnection();
-                    keyIterator.remove();
+            } catch (IOException e) {
+                myLogger.info(e.getMessage());
+                continue;
+            }
+            Set<SelectionKey> selectedKeys = acceptSelector.selectedKeys();
+
+            // We use an iterator instead of a for loop to iterate through
+            // the elements to simultaneously remove elements from the
+            // selected keys set.
+            Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+
+            while(keyIterator.hasNext()) {
+                keyIterator.next();
+                keyIterator.remove();
+                SocketChannel clientChannel;
+                try {
+                    clientChannel = acceptChannel.accept();
+                    clientChannel.configureBlocking(false);
+                    clientChannel.register(readSelector, SelectionKey.OP_READ);
+                } catch (IOException e) {
+                    myLogger.info(e.getMessage());
+                    continue;
                 }
             }
-        } catch (IOException e) {
-            System.out.println(e.getMessage());
         }
     }
     
@@ -68,16 +88,5 @@ public class ListenerThread extends Thread {
      */
     public Selector getReadSelector() {
         return readSelector;
-    }
-
-    /**
-     * Helper function to accept an incoming connection in non-blocking mode.
-     * It registers the associated channel on the read-events selector.
-     * @throws IOException
-     */
-    private void acceptConnection() throws IOException {
-        SocketChannel clientChannel = acceptChannel.accept();
-        clientChannel.configureBlocking(false);
-        clientChannel.register(readSelector, SelectionKey.OP_READ);
     }
 }

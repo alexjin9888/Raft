@@ -7,14 +7,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 import units.LogEntry;
-import utils.ObjectUtils;
+import utils.SerializationUtils;
 
 /**
  * An instance of this class is used to manage the persistent state of a server
  */
 public class PersistentState implements Serializable {
     
-    // Class versioning to support state serialization/deserialization
+    /**
+     * Class versioning to support instance serialization/deserialization
+     */
     private static final long serialVersionUID = 1L;
     
     // Directory used to store the persistent state files
@@ -56,7 +58,7 @@ public class PersistentState implements Serializable {
      */
     public void save() throws IOException {
         Files.write(Paths.get(BASE_PS_DIR, myId + PS_EXT), 
-            ObjectUtils.serializeObject(this));
+            SerializationUtils.serialize(this));
     }
 
     /**
@@ -69,7 +71,7 @@ public class PersistentState implements Serializable {
             myId + PS_EXT));
 
         PersistentState loadedPersistentState = (PersistentState) 
-            ObjectUtils.deserializeObject(persistentStateBytes);
+            SerializationUtils.deserialize(persistentStateBytes);
         this.currentTerm = loadedPersistentState.currentTerm;
         this.votedFor = loadedPersistentState.votedFor;
         this.log = loadedPersistentState.log;

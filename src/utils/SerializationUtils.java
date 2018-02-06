@@ -9,7 +9,7 @@ import java.io.Serializable;
 /**
  * Helper class for object serialization and deserialization.
  */
-public class ObjectUtils {
+public abstract class SerializationUtils {
 
     /**
      * Serializes an serializable object into a sequence of bytes.
@@ -17,7 +17,7 @@ public class ObjectUtils {
      * @return             a byte array representing the serialized object
      * @throws IOException
      */
-    public static byte[] serializeObject(Serializable object) 
+    public static byte[] serialize(Serializable object) 
         throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         ObjectOutputStream out = null;
@@ -38,7 +38,7 @@ public class ObjectUtils {
      * @return             an object created from deserializing the byte array
      * @throws IOException
      */
-    public static Object deserializeObject(byte[] objectBytes) 
+    public static Serializable deserialize(byte[] objectBytes) 
         throws IOException {
         Object object = null;
 
@@ -55,7 +55,7 @@ public class ObjectUtils {
         in.close();
         bis.close();
         
-        return object;
+        return (Serializable) object;
     }
 
 }
