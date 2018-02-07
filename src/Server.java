@@ -188,14 +188,12 @@ public class Server implements Runnable {
                 try {
                     RaftMessage message = (RaftMessage) NetworkUtils.receiveSerializable(
                             (SocketChannel) key.channel());
-                    key.cancel();
                     logMessage("received " + message);
                     processMessage(message);
                 } catch (IOException e) {
-                    key.cancel();
                     logMessage(e.getMessage());
-                    continue;
                 }
+                key.cancel();
             }
         }
     }
