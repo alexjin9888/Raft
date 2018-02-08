@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import units.LogEntry;
@@ -14,6 +15,23 @@ import utils.SerializationUtils;
  */
 public class PersistentState implements Serializable {
     
+    // term of current leader
+    public int currentTerm;
+    // serverID that this server voted for during the current election term
+    public String votedFor;
+    // List of the server's log entries
+    public List<LogEntry> log;
+        
+    // Unique identification (Id) of server
+    private String myId;
+    
+    /**
+     * In-memory object that mirrors the persistent state on disk.
+     * Facilitates making sure that we write to disk only if a dirty write
+     * to the persistent state in-memory has occurred.
+     */
+    private PersistentState persistentStateOnDisk;
+
     /**
      * Class versioning to support instance serialization/deserialization
      */
@@ -24,15 +42,6 @@ public class PersistentState implements Serializable {
         System.getProperty("user.dir").toString();
     // Extension used for persistent state files
     private static final String PS_EXT = ".log";
-    
-    // Unique identification (Id) of server
-    private String myId;
-    // term of current leader
-    public int currentTerm;
-    // serverID that this server voted for during the current election term
-    public String votedFor;
-    // List of the server's log entries
-    public List<LogEntry> log;
 
     /**
      * Creates an object that manages persistent state for the server.
@@ -47,18 +56,27 @@ public class PersistentState implements Serializable {
             this.currentTerm = 0;
             this.votedFor = null;
             this.log = new ArrayList<LogEntry>();
+            this.persistentStateOnDisk = null;
         } else {
             load();
         }
     }
 
     /**
-     * Writes to file the current persistent state of this server
+     * Writes to file the current persistent state of this server if the state
+     * has changed since the last write to disk.
      * @throws IOException
      */
+    // TODO Think about how to modify this function so that it doesn't write
+    // the full log to disk during every save (instead, only writes updates).
     public void save() throws IOException {
-        Files.write(Paths.get(BASE_PS_DIR, myId + PS_EXT), 
-            SerializationUtils.serialize(this));
+        if (this.equals(persistentStateOnDisk)) {
+            return;
+        }
+        byte[] persistentStateBytes = SerializationUtils.serialize(this);
+        Files.write(Paths.get(BASE_PS_DIR, myId + PS_EXT), persistentStateBytes);
+        this.persistentStateOnDisk = (PersistentState) 
+                SerializationUtils.deserialize(persistentStateBytes);        
     }
 
     /**
@@ -75,5 +93,37 @@ public class PersistentState implements Serializable {
         this.currentTerm = loadedPersistentState.currentTerm;
         this.votedFor = loadedPersistentState.votedFor;
         this.log = loadedPersistentState.log;
+        
+        this.persistentStateOnDisk = (PersistentState) 
+                SerializationUtils.deserialize(persistentStateBytes);
+    }
+
+    // TODO test that this function works as intended, esp. w.r.t.
+    // comparison of the log.
+    // TODO consider whether we have to modify this function once we stop
+    // writing the full log to disk during every save.
+    /**
+     * Checks whether or not two persistent states are semantically equivalent.
+     * @param obj another persistent state object
+     */
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == null)
+            return false;
+        PersistentState other = (PersistentState) obj;
+        
+        if (currentTerm != other.currentTerm)
+            return false;
+        
+        if (votedFor == null && other.votedFor != null) {
+            return false;
+        } else if (!votedFor.equals(other.votedFor))
+            return false;
+        
+        if (!log.equals(other.log)) {
+            return false;
+        }
+
+        return true;
     }
 }

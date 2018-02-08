@@ -19,6 +19,23 @@ public class LogEntry {
     }
 
     @Override
+    public boolean equals(Object obj) {
+        if (obj == null)
+            return false;
+        LogEntry other = (LogEntry) obj;
+        
+        if (command == null && other.command != null) {
+            return false;
+        } else if (!command.equals(other.command))
+            return false;
+        
+        if (term != other.term)
+            return false;
+        
+        return true;
+    }
+    
+    @Override
     public String toString() {
         return "LogEntry [command=" + command + ", term=" + term + "]";
     }

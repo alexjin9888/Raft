@@ -3,6 +3,8 @@ import java.io.Serializable;
 
 /**
  * This class contains the fields included in all Raft messages.
+ * One benefit of having this class is to enable common processing across all
+ * Raft messages (e.g., perform term comparison in one location).
  */
 public abstract class RaftMessage implements Serializable {
     /**
