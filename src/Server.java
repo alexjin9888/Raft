@@ -44,10 +44,19 @@ public class Server implements Runnable {
     private static final int MIN_ELECTION_TIMEOUT = 5000; // in ms
     private static final int MAX_ELECTION_TIMEOUT = 10000; // in ms
 
-    private String myId; // unique id
+    /**
+     * My server id
+     */
+    private String myId;
+    /**
+     * Current leader's id
+     */
     @SuppressWarnings("unused")
-    private String leaderId; // current leader's id
-    private InetSocketAddress myAddress; // unique address
+    private String leaderId;
+    /**
+     * My server address
+     */
+    private InetSocketAddress myAddress;
 
     // A map that maps server id to a server metadata object. This map
     // enables us to read properties and keep track of state
@@ -106,13 +115,12 @@ public class Server implements Runnable {
 
 
     /**
-     * @param id server id
      * @param serverAddressesMap map that maps server id to address.
      *        Contains entries for all servers in Raft cluster.
+     * @param myId my server id
      */
-    public Server(String id,
-        HashMap<String, InetSocketAddress> serverAddressesMap) {
-        myId = id;
+    public Server(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
+        this.myId = myId;
         leaderId = null;
         peerMetadataMap = new HashMap<String, ServerMetadata>();
         for (HashMap.Entry<String, InetSocketAddress> entry
@@ -131,7 +139,7 @@ public class Server implements Runnable {
         myTimer = new Timer();
 
         try {
-            persistentState = new PersistentState(myId);
+            persistentState = new PersistentState(this.myId);
             transitionRole(new Follower());
             listenerThread = new ListenerThread(myAddress);
         } catch (IOException e) {
@@ -151,7 +159,7 @@ public class Server implements Runnable {
         this.commitIndex = -1;
         this.lastApplied = -1;
 
-        myLogger.debug(myId + " :: Configuration File Defined To Be :: "+
+        myLogger.debug(this.myId + " :: Configuration File Defined To Be :: "+
             System.getProperty("log4j.configurationFile"));
         logMessage("successfully booted");
     }
@@ -244,10 +252,15 @@ public class Server implements Runnable {
         // don't try to send the request.
         try {
             this.persistentState.save();
+            // Below, we submit the task of sending a network request to the
+            // thread pool, since it is a blocking operation.
             threadPoolService.submit(() -> {
                 try {
                     NetworkUtils.sendSerializable(recipientMeta.address, message);
                 } catch (IOException e) {
+                    // We failed to send a message to the recipient address.
+                    // TODO: consider logging the message that we failed to
+                    // send instead of reporting a message like below.
                     if (e.getMessage().equals("Connection refused")) {
                         logMessage("connection to " + recipientMeta.id +
                                    " refused");
@@ -258,6 +271,8 @@ public class Server implements Runnable {
             });   
         } catch (IOException e) {
             logMessage(e.getMessage());
+            // TODO: we will probably want to die here, since this is a fatal
+            // error.
         }
     }
 
@@ -278,8 +293,7 @@ public class Server implements Runnable {
      */
     private void processMessage(RaftMessage message) {
         if (message.term > this.persistentState.currentTerm) {
-            this.persistentState.currentTerm = message.term;
-            this.persistentState.votedFor = null;
+            updateTerm(message.term);
             this.transitionRole(new Follower());
         }
         if (message instanceof AppendEntriesRequest) {
@@ -424,7 +438,7 @@ public class Server implements Runnable {
      * Processes an AppendEntries reply.
      * @param AppendEntriesReply reply to AppendEntriesReply request
      */
-    public void processAppendEntriesReply(AppendEntriesReply reply) {
+    private void processAppendEntriesReply(AppendEntriesReply reply) {
         if (!(role instanceof Leader)) {
             return;
         }
@@ -488,7 +502,7 @@ public class Server implements Runnable {
      * Processes an RequestVote reply.
      * @param RequestVoteReply reply to RequestVote request
      */
-    public void processRequestVoteReply(RequestVoteReply reply) {
+    private void processRequestVoteReply(RequestVoteReply reply) {
         if (!(role instanceof Candidate)) {
             return;
         }
@@ -501,6 +515,16 @@ public class Server implements Runnable {
         if (votesReceived > (peerMetadataMap.size()+1)/2) {
             transitionRole(new Leader());
         }
+    }
+    
+    /**
+     * Wrapper around current term setter that enforces some invariants
+     * relating to updating our knowledge of the current term.
+     * @param newTerm new term that we want to update the current term to.
+     */
+    private void updateTerm(int newTerm) {
+        this.persistentState.currentTerm = newTerm;
+        this.persistentState.votedFor = null;
     }
     
     /**
@@ -553,9 +577,9 @@ public class Server implements Runnable {
          * Starts a new election.
          */
         public void performTimeoutAction() {
-            persistentState.currentTerm += 1;
-            votesReceived = 1;
+            updateTerm(persistentState.currentTerm + 1);
             persistentState.votedFor = myId;
+            votesReceived = 1;
             int lastLogIndex = persistentState.log.size()-1;
             // lastLogTerm = -1 means there are no log entries
             int lastLogTerm = lastLogIndex < 0 ?
@@ -664,7 +688,7 @@ public class Server implements Runnable {
                 InetSocketAddress("localhost", allPorts[i]));   
         }
 
-        Server myServer = new Server("Server"+myPortIndex, serverAddressesMap);
+        Server myServer = new Server(serverAddressesMap, "Server"+myPortIndex);
         myServer.run();
     }
 }
