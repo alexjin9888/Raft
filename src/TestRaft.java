@@ -23,8 +23,5 @@ public class TestRaft {
         Server server0 = new Server(serverAddressesMap, "Server0");
         Server server1 = new Server(serverAddressesMap, "Server1");
         Server server2 = new Server(serverAddressesMap, "Server2");
-        (new Thread(server0)).start();
-        (new Thread(server1)).start();
-        (new Thread(server2)).start();
     }
 }

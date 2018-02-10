@@ -8,7 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import units.LogEntry;
-import utils.SerializationUtils;
+import utils.ObjectUtils;
 
 /**
  * An instance of this class is used to manage the persistent state of a server
@@ -73,10 +73,10 @@ public class PersistentState implements Serializable {
         if (this.equals(persistentStateOnDisk)) {
             return;
         }
-        byte[] persistentStateBytes = SerializationUtils.serialize(this);
+        byte[] persistentStateBytes = ObjectUtils.serialize(this);
         Files.write(Paths.get(BASE_PS_DIR, myId + PS_EXT), persistentStateBytes);
         this.persistentStateOnDisk = (PersistentState) 
-                SerializationUtils.deserialize(persistentStateBytes);        
+                ObjectUtils.deserialize(persistentStateBytes);        
     }
 
     /**
@@ -89,13 +89,13 @@ public class PersistentState implements Serializable {
             myId + PS_EXT));
 
         PersistentState loadedPersistentState = (PersistentState) 
-            SerializationUtils.deserialize(persistentStateBytes);
+            ObjectUtils.deserialize(persistentStateBytes);
         this.currentTerm = loadedPersistentState.currentTerm;
         this.votedFor = loadedPersistentState.votedFor;
         this.log = loadedPersistentState.log;
         
         this.persistentStateOnDisk = (PersistentState) 
-                SerializationUtils.deserialize(persistentStateBytes);
+                ObjectUtils.deserialize(persistentStateBytes);
     }
 
     // TODO test that this function works as intended, esp. w.r.t.

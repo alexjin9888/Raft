@@ -23,7 +23,8 @@ public class AppendEntriesReply extends RaftMessage {
     }
     @Override
     public String toString() {
-        return "AppendEntriesReply [term=" + term + ", successfulAppend="
-                + successfulAppend + "]";
+        return "AppendEntriesReply [successfulAppend=" + successfulAppend
+                + ", serverId=" + serverId + ", term=" + term + "]";
     }
+
 }

@@ -38,9 +38,10 @@ public class AppendEntriesRequest extends RaftMessage {
     }
     @Override
     public String toString() {
-        return "AppendEntriesRequest [term=" + term + ", serverId=" + serverId
-                + ", prevLogIndex=" + prevLogIndex + ", prevLogTerm="
-                + prevLogTerm + ", entry=" + entry
-                + ", leaderCommit=" + leaderCommit + "]";
+        return "AppendEntriesRequest [prevLogIndex=" + prevLogIndex
+                + ", prevLogTerm=" + prevLogTerm + ", entry=" + entry
+                + ", leaderCommit=" + leaderCommit + ", serverId=" + serverId
+                + ", term=" + term + "]";
     }
+
 }

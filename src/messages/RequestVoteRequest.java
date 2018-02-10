@@ -25,10 +25,12 @@ public class RequestVoteRequest extends RaftMessage {
         this.lastLogIndex = lastLogIndex;
         this.lastLogTerm = lastLogTerm;
     }
+
     @Override
     public String toString() {
-        return "RequestVoteRequest [term=" + term + ", serverId="
-                + serverId + ", lastLogIndex=" + lastLogIndex
-                + ", lastLogTerm=" + lastLogTerm + "]";
+        return "RequestVoteRequest [lastLogIndex=" + lastLogIndex
+                + ", lastLogTerm=" + lastLogTerm + ", serverId=" + serverId
+                + ", term=" + term + "]";
     }
+
 }

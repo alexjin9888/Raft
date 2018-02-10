@@ -22,9 +22,11 @@ public class RequestVoteReply extends RaftMessage {
         super(serverId, term);
         this.grantVote = grantVote;
     }
+
     @Override
     public String toString() {
-        return "RequestVoteReply [term=" + term + ", grantVote=" + grantVote
-                + "]";
+        return "RequestVoteReply [grantVote=" + grantVote + ", serverId="
+                + serverId + ", term=" + term + "]";
     }
+
 }
