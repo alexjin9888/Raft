@@ -63,15 +63,15 @@ public class SerializableReceiver {
                                     // We only exit the while loop below when an
                                     // I/O error or read timeout errors.
                                     while (true) {
-                                     // We block until a serializable object is read or an I/O error occurs.
+                                        // We block until a serializable object is read or an I/O error occurs.
                                         serializableHandler.handleSerializable((Serializable) ois.readObject());
                                     }
                                 }
                             } catch (IOException e) {
                                 // TODO: think about whether or not to print
                                 // any further messages here.
-                                myLogger.info(e.getMessage());
-                                e.printStackTrace();
+                                myLogger.info(address + " received the following I/O error message while trying to read: " + e.getMessage());
+                                // e.printStackTrace();
                             } catch (ClassNotFoundException e) {
                                 // TODO: figure out what to print in the case of
                                 // error being of type ClassNotFoundException.

@@ -175,7 +175,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
         
         switch (role) {
             case FOLLOWER:
-                resetCountdownUntilElection();
+                restartElectionTimer();
                 break;
             case CANDIDATE:
                 // Start an election
@@ -194,7 +194,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
                 for (ServerMetadata meta : peerMetadataMap.values()) {
                     saveStateAndSendMessage(meta, message);
                 }
-                resetCountdownUntilElection();
+                restartElectionTimer();
                 break;
             case LEADER:
                 // Initializes volatile state specific to leader role.
@@ -232,7 +232,11 @@ public class Server implements SerializableReceiver.SerializableHandler {
         }
     }
     
-    private void resetCountdownUntilElection() {
+    // Note: if election timer has never started before, starts election timer.
+    private void restartElectionTimer() {
+        if (electionTimer != null) {
+            electionTimer.cancel();
+        }
         electionTimer = new Timer();
         TimerTask startElection = new TimerTask() {
             public void run() {
@@ -287,7 +291,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
      */
     public synchronized void handleSerializable(Serializable object) {
         RaftMessage message = (RaftMessage) object;
-        logMessage("received " + message);
+        logMessage("Received " + message);
         if (message.term > this.persistentState.currentTerm) {
             updateTerm(message.term);
             transitionRole(Server.Role.FOLLOWER);
@@ -339,7 +343,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
             
             switch(role) {
                 case FOLLOWER:
-                    resetCountdownUntilElection();
+                    restartElectionTimer();
                     break;
                 case CANDIDATE:
                     transitionRole(Server.Role.FOLLOWER);
@@ -387,7 +391,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
         
         if (grantVote) {
             assert(this.role == Server.Role.FOLLOWER);
-            resetCountdownUntilElection();
+            restartElectionTimer();
             this.persistentState.votedFor = request.serverId;
             logMessage("granting vote to " + request.serverId);            
         }

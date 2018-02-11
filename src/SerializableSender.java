@@ -2,8 +2,11 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
-import java.nio.channels.SocketChannel;
+import java.net.Socket;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.logging.log4j.LogManager;
@@ -13,7 +16,7 @@ import utils.ObjectUtils;
 
 public class SerializableSender {
     
-    private HashMap<InetSocketAddress, SocketChannel> addressToPeerChannelMap;
+    private Map<InetSocketAddress, SocketOOSTuple> addressToSocketOOS;
     
     /**
      * ExecutorService instance manages a thread pool for us, which
@@ -29,7 +32,7 @@ public class SerializableSender {
     
     
     public SerializableSender() {
-        addressToPeerChannelMap = new HashMap<InetSocketAddress, SocketChannel>();        
+        addressToSocketOOS = Collections.synchronizedMap(new HashMap<InetSocketAddress, SocketOOSTuple>());        
         threadPoolService = Executors.newCachedThreadPool();
     }
 
@@ -40,35 +43,48 @@ public class SerializableSender {
         Serializable objectCopy = ObjectUtils.deepClone(object);
         
         threadPoolService.submit(() -> {
-            SocketChannel peerChannel = null;
+            Socket socket = null;
+            ObjectOutputStream oos = null;
+            SocketOOSTuple socketOOSTuple = null;
             try {
-                synchronized(addressToPeerChannelMap) {
-                    peerChannel = addressToPeerChannelMap.get(recipientAddress);
-
-                    if (peerChannel != null && !peerChannel.isConnected()) {
-                        addressToPeerChannelMap.remove(recipientAddress);
-                        peerChannel = null;
-                    }
-
-                    if (peerChannel == null) {
-                        peerChannel = SocketChannel.open(recipientAddress);
-                        addressToPeerChannelMap.put(recipientAddress, peerChannel);
+                synchronized(addressToSocketOOS) {
+                    socketOOSTuple = addressToSocketOOS.get(recipientAddress);
+                    if (socketOOSTuple == null) {
+                        socket = new Socket();
+                        socket.connect(recipientAddress);
+                        oos = new ObjectOutputStream(socket.getOutputStream());
+                        socketOOSTuple = new SocketOOSTuple(socket, oos);
+                        addressToSocketOOS.put(recipientAddress, socketOOSTuple);
                     }
                 }
-                try (ObjectOutputStream oos = new ObjectOutputStream(peerChannel.socket().getOutputStream())) {
-                    oos.writeObject(objectCopy);
-                    myLogger.info("Sent " + objectCopy.toString() + " to " + recipientAddress);
-                }
+                socket = socketOOSTuple.socket;
+                oos = socketOOSTuple.oos;
+                oos.writeObject(objectCopy);
+                myLogger.info("Sent " + objectCopy.toString() + " to " + recipientAddress);
             } catch (IOException e) {
                 myLogger.info("Failed to send " + objectCopy.toString() + " to " + recipientAddress);
-                if (peerChannel != null) {
-                    try {
-                        peerChannel.close();
-                    } catch (IOException e1) {
-                        // We silently ignore the error since we already report the failed sending above.
+                try {
+                    if (socket != null) {
+                        socket.close();
                     }
+                    if (oos != null) {
+                        oos.close();
+                    }
+                } catch (IOException e1) {
+                    // We silently ignore the error since we already report
+                    // the failed sending above.
                 }
+                addressToSocketOOS.remove(recipientAddress);
             }
         }); 
+    }
+    
+    public class SocketOOSTuple {
+        Socket socket;
+        ObjectOutputStream oos;
+        public SocketOOSTuple(Socket socket, ObjectOutputStream oos) {
+            this.socket = socket;
+            this.oos = oos;
+        }
     }
 }
