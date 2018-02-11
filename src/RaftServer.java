@@ -1,9 +1,6 @@
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.Timer;
@@ -30,12 +27,12 @@ import units.ServerMetadata;
  * TODO: reword comment so that it better describes what this class represents.
  * Make the comment more direct.
  */
-public class Server implements SerializableReceiver.SerializableHandler {
-    // All synchronized blocks and methods present in this class are to ensure
-    // that at most one thread reads and modifies server state at any given
+public class RaftServer implements SerializableReceiver.SerializableHandler {
+    // All synchronized methods present in this class are to ensure that at
+    // most one thread reads and modifies server state at any given
     // time. Any instance method called in this class that does not have the
-    // synchronized keyword has a top-level ancestor method in the call stack
-    // whose method signature contains the synchronized keyword.
+    // synchronized modifier has a top-level ancestor method in the call stack
+    // whose method signature has the synchronized modifier.
     /**
      * heartbeat interval in ms
      */
@@ -108,7 +105,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
      *        Contains entries for all servers in Raft cluster.
      * @param myId my server id
      */
-    public Server(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
+    public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
         this.myId = myId;
         leaderId = null;
         peerMetadataMap = new HashMap<String, ServerMetadata>();
@@ -135,7 +132,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
             System.exit(1);
         }
         
-        transitionRole(Server.Role.FOLLOWER);
+        transitionRole(RaftServer.Role.FOLLOWER);
 
         this.commitIndex = -1;
         this.lastApplied = -1;
@@ -158,7 +155,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
      * one.
      * @param role new role that the server instance transitions to. 
      */
-    private void transitionRole(Role role) {
+    private synchronized void transitionRole(Role role) {
         
         if (this.role != role) {
             logMessage("updating role to " + role);
@@ -210,7 +207,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
                 heartbeatTimer = new Timer();
                 TimerTask sendHeartbeats = new TimerTask() {
                     public void run() {
-                        synchronized(Server.this) {
+                        synchronized(RaftServer.this) {
                             // send heartbeat messages with zero or more log
                             // entries after a heartbeat interval has passed
                             logMessage("broadcasting heartbeat messages");
@@ -240,10 +237,8 @@ public class Server implements SerializableReceiver.SerializableHandler {
         electionTimer = new Timer();
         TimerTask startElection = new TimerTask() {
             public void run() {
-                synchronized(Server.this) {
-                    // Starts a new election
-                    transitionRole(Server.Role.CANDIDATE);
-                }
+                // Starts a new election
+                transitionRole(RaftServer.Role.CANDIDATE);
             }
         };
         electionTimer.schedule(startElection, ThreadLocalRandom.current().nextInt(
@@ -294,7 +289,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
         logMessage("Received " + message);
         if (message.term > this.persistentState.currentTerm) {
             updateTerm(message.term);
-            transitionRole(Server.Role.FOLLOWER);
+            transitionRole(RaftServer.Role.FOLLOWER);
         }
         if (message instanceof AppendEntriesRequest) {
             processAppendEntriesRequest((AppendEntriesRequest) message);
@@ -339,14 +334,14 @@ public class Server implements SerializableReceiver.SerializableHandler {
             
             // If we were a leader, we should have downgraded to follower
             // prior to processing a valid AppendEntries request.
-            assert(this.role != Server.Role.LEADER);
+            assert(this.role != RaftServer.Role.LEADER);
             
             switch(role) {
                 case FOLLOWER:
                     restartElectionTimer();
                     break;
                 case CANDIDATE:
-                    transitionRole(Server.Role.FOLLOWER);
+                    transitionRole(RaftServer.Role.FOLLOWER);
                     break;
             }
         }
@@ -390,7 +385,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
         boolean grantVote = checkGrantVote(request);
         
         if (grantVote) {
-            assert(this.role == Server.Role.FOLLOWER);
+            assert(this.role == RaftServer.Role.FOLLOWER);
             restartElectionTimer();
             this.persistentState.votedFor = request.serverId;
             logMessage("granting vote to " + request.serverId);            
@@ -442,7 +437,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
      * @param AppendEntriesReply reply to AppendEntriesReply request
      */
     private void processAppendEntriesReply(AppendEntriesReply reply) {
-        if (this.role != Server.Role.LEADER) {
+        if (this.role != RaftServer.Role.LEADER) {
             return;
         }
         if (reply.term < this.persistentState.currentTerm) {
@@ -506,7 +501,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
      * @param RequestVoteReply reply to RequestVote request
      */
     private void processRequestVoteReply(RequestVoteReply reply) {
-        if (this.role != Server.Role.CANDIDATE) {
+        if (this.role != RaftServer.Role.CANDIDATE) {
             return;
         }
         if (reply.term < this.persistentState.currentTerm) {
@@ -516,7 +511,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
             votesReceived += 1;
         }
         if (votesReceived > (peerMetadataMap.size()+1)/2) {
-            transitionRole(Server.Role.LEADER);
+            transitionRole(RaftServer.Role.LEADER);
         }
     }
     
@@ -578,7 +573,7 @@ public class Server implements SerializableReceiver.SerializableHandler {
         
         // Java doesn't like calling constructors without an
         // assignment to a variable, even if that variable is not used.
-        Server myServer = new Server(serverAddressesMap, "Server"+myPortIndex);
+        RaftServer myServer = new RaftServer(serverAddressesMap, "Server"+myPortIndex);
     }
 
 }

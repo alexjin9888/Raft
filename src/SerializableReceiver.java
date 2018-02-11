@@ -2,10 +2,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
-import java.util.Iterator;
-import java.util.Set;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -16,13 +14,13 @@ public class SerializableReceiver {
     
     // Amount of time (in ms) that a read socket is willing to block without
     // receiving any data before timing out and throwing an exception
-    private static final int READ_TIMEOUT = 3000;
+    private static final int READ_TIMEOUT = 20000;
     
     public interface SerializableHandler {
         public void handleSerializable(Serializable object);
     }
     
-    private ServerSocketChannel listenerChannel;
+    private ServerSocket listenerSocket;
     
     /**
      * ExecutorService instance manages a thread pool for us, which
@@ -36,16 +34,17 @@ public class SerializableReceiver {
      */
     private static final Logger myLogger = LogManager.getLogger();
     
-    public SerializableReceiver(InetSocketAddress address, SerializableHandler serializableHandler) {
+    public SerializableReceiver(InetSocketAddress myAddress, SerializableHandler serializableHandler) {
         try {
-            listenerChannel = ServerSocketChannel.open();
-            listenerChannel.bind(address);         
+            listenerSocket = new ServerSocket();
+            listenerSocket.bind(myAddress);
         } catch (IOException e) {
             // Throw exceptions that are a subclass of IOException
             // and/or RuntimeException.
             // Maybe it can be a custom subclass.
             // Also, intercept the IOException subclass corresponding to
             // address is in-use error.
+            myLogger.info(e.getMessage());
             System.exit(1);
         }
         
@@ -55,11 +54,12 @@ public class SerializableReceiver {
             public void run() {
                 while(true) {
                     try {
-                        SocketChannel peerChannel = listenerChannel.accept();
-                        // peerChannel.socket().setSoTimeout(READ_TIMEOUT);
+                        Socket socket = listenerSocket.accept();
+                        socket.setSoTimeout(READ_TIMEOUT);
+                        myLogger.info(myAddress + " accepted connection from " + socket.getInetAddress());
                         threadPoolService.submit(() -> {
                             try {
-                                try (ObjectInputStream ois = new ObjectInputStream(peerChannel.socket().getInputStream())) {
+                                try (ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
                                     // We only exit the while loop below when an
                                     // I/O error or read timeout errors.
                                     while (true) {
@@ -70,7 +70,7 @@ public class SerializableReceiver {
                             } catch (IOException e) {
                                 // TODO: think about whether or not to print
                                 // any further messages here.
-                                myLogger.info(address + " received the following I/O error message while trying to read: " + e.getMessage());
+                                myLogger.info(myAddress + " received the following I/O error message while trying to read: " + e.getMessage());
                                 // e.printStackTrace();
                             } catch (ClassNotFoundException e) {
                                 // TODO: figure out what to print in the case of
@@ -78,7 +78,7 @@ public class SerializableReceiver {
                             }
                             
                             try {
-                                peerChannel.close();
+                                socket.close();
                             } catch (IOException e1) {
                                 // TODO: We silently ignore the error since
                                 // the sender can start a new connection
