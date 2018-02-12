@@ -40,20 +40,19 @@ public class SerializableSender {
         // This ensures that no one modifies the object while sending.
         Serializable objectCopy = ObjectUtils.deepClone(object);
         SocketOOSTuple socketOOSTuple = addressToSocketOOS.get(recipientAddress);
-        try {
-            if (socketOOSTuple == null) {
-                socketOOSTuple = new SocketOOSTuple();
-                addressToSocketOOS.put(recipientAddress, socketOOSTuple);
-                socketOOSTuple.socket = new Socket();
+        if (socketOOSTuple == null) {
+            socketOOSTuple = new SocketOOSTuple();
+            addressToSocketOOS.put(recipientAddress, socketOOSTuple);
+            socketOOSTuple.socket = new Socket();
+            try {
                 socketOOSTuple.socket.connect(recipientAddress);
                 socketOOSTuple.oos = new ObjectOutputStream(socketOOSTuple.socket.getOutputStream());
                 myLogger.info("Now connected to " + recipientAddress);
-            }   
-        } catch (IOException e) {
-            processSendFailure(recipientAddress, objectCopy);
-            return;
+            } catch (IOException e) {
+                processSendFailure(recipientAddress, objectCopy);
+                return;
+            }
         }
-        
         final SocketOOSTuple recipientSocketOOSTuple = socketOOSTuple; 
         threadPoolService.submit(() -> {
             try {
@@ -72,19 +71,17 @@ public class SerializableSender {
         if (socketOOSTuple == null) {
             return;
         }
-        
         addressToSocketOOS.remove(recipientAddress);
-        
         try {
-            if (socketOOSTuple.socket != null) {
-                socketOOSTuple.socket.close();
-            }
             if (socketOOSTuple.oos != null) {
                 socketOOSTuple.oos.close();
             }
+            if (socketOOSTuple.socket != null) {
+                socketOOSTuple.socket.close();
+            }
         } catch (IOException e1) {
-            // We silently ignore the error since we already report
-            // the failed sending above.
+            // We silently ignore the error since we already report the failed
+            // sending above.
         }
     }
     
