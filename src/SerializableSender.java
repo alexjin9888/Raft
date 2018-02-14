@@ -14,7 +14,7 @@ import utils.ObjectUtils;
 
 public class SerializableSender {
         
-    private Map<InetSocketAddress, SocketOOSTuple> addressToSocketOOS;
+    private HashMap<InetSocketAddress, SocketOOSTuple> addressToSocketOOS;
     
     /**
      * ExecutorService instance manages a thread pool for us, which
