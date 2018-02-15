@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -86,9 +87,10 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
     private int lastApplied;
     
     /**
-     * (Candidate-specific) Number of votes received for an election.
+     * (Candidate-specific) Set containing server IDs that voted for me during
+     * current election term.
      */
-    private int votesReceived;
+    private Set votedForMeSet;
     
     private Timer electionTimer;
     private Timer heartbeatTimer;
@@ -377,9 +379,9 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             return;
         }
         if (reply.grantVote) {
-            votesReceived += 1;
+            votedForMeSet.add(reply.serverId);
         }
-        if (votesReceived > (peerMetadataMap.size()+1)/2) {
+        if (votedForMeSet.size() > (peerMetadataMap.size()+1)/2) {
             transitionRole(RaftServer.Role.LEADER);
         }
     }
@@ -436,7 +438,8 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                 // Start an election
                 updateTerm(persistentState.currentTerm + 1);
                 persistentState.votedFor = myId;
-                votesReceived = 1;
+                votedForMeSet = new HashSet();
+                votedForMeSet.add(myId);
                 int lastLogIndex = persistentState.log.size()-1;
                 // lastLogTerm = -1 means there are no log entries
                 int lastLogTerm = lastLogIndex < 0 ?
