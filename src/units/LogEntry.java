@@ -13,7 +13,6 @@ public class LogEntry {
      * @param term    see above
      */
     public LogEntry(String command, int term) {
-        super();
         this.command = command;
         this.term = term;
     }

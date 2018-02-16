@@ -21,7 +21,6 @@ import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
 import misc.PersistentState;
 import misc.PersistentStateException;
-import units.ServerMetadata;
 
 
 /**
@@ -498,6 +497,31 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
     private synchronized void logMessage(Object message) {
         myLogger.info(myId + " :: term=" + this.persistentState.currentTerm + 
             " :: " + role + " :: " + message);
+    }
+    
+    /**
+     * An instance of this class is created for every other server in the Raft
+     * cluster. These instances are used to help the running server read
+     * properties and keep track of state corresponding to the other servers.
+     */
+    public class ServerMetadata {
+        public String id; // Each server has a unique id
+        public InetSocketAddress address; // Each server has a unique address
+        // Index of the next log entry to send to that server
+        public int nextIndex;
+        // Index of highest log entry known to be replicated on server 
+        public int matchIndex;
+
+        /**
+         * @param id      see above
+         * @param address see above
+         */
+        public ServerMetadata(String id, InetSocketAddress address) {
+            this.id = id;
+            this.address = address;
+            this.nextIndex = 0;
+            this.matchIndex = -1;
+        }
     }
     
     /**
