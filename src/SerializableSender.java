@@ -14,6 +14,10 @@ import utils.ObjectUtils;
 
 public class SerializableSender {
         
+    class SocketInfo {
+        Socket socket;
+        ObjectOutputStream oos;
+    }
     private HashMap<InetSocketAddress, SocketInfo> addressToSocketInfo;
     
     /**
@@ -83,10 +87,5 @@ public class SerializableSender {
             // We silently ignore the error since we already report the failed
             // sending above.
         }
-    }
-    
-    public class SocketInfo {
-        Socket socket;
-        ObjectOutputStream oos;
     }
 }

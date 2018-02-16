@@ -57,6 +57,18 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
     @SuppressWarnings("unused")
     private String leaderId;
 
+    /**
+     * An instance of this class is created for every other server in the Raft
+     * cluster. These instances are used to help the running server read
+     * properties and keep track of state corresponding to the other servers.
+     */
+    class ServerMetadata {
+        InetSocketAddress address; // Each server has a unique address
+        // Index of the next log entry to send to that server
+        int nextIndex;
+        // Index of highest log entry known to be replicated on server 
+        int matchIndex;
+    }
     // A map that maps server id to a server metadata object. This map
     // enables us to read properties and keep track of state
     // corresponding to other servers in the Raft cluster.
@@ -69,7 +81,12 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
     private PersistentState persistentState;
     
     private Timer myTimer;
-    private TimerTask timeoutTask;
+    
+    class TimerTaskInfo {
+       TimerTask task;
+       boolean taskCancelled;
+    }
+    private TimerTaskInfo myTimerTaskInfo;
     
     private static enum Role {
         FOLLOWER,
@@ -120,8 +137,11 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             InetSocketAddress elemAddress = entry.getValue();  
 
             if (!elemId.equals(this.myId)) {
-                this.peerMetadataMap.put(elemId,
-                        new ServerMetadata(elemId, elemAddress));
+                ServerMetadata peerMetadata = new ServerMetadata();
+                peerMetadata.address = elemAddress;
+                peerMetadata.nextIndex = 0;
+                peerMetadata.matchIndex = -1;
+                this.peerMetadataMap.put(elemId, peerMetadata);
             }
         }
   
@@ -399,20 +419,31 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
         }
         this.role = role;
         
-        if (timeoutTask != null) {
-            timeoutTask.cancel();
+        if (myTimerTaskInfo != null) {
+            myTimerTaskInfo.task.cancel();
+            myTimerTaskInfo.taskCancelled = true;
         }
         
         // Define a Runnable that restarts (or starts) the election timer
         // when run.
         Runnable restartElectionTimer = () -> {
+            
+            TimerTaskInfo electionTimerTaskInfo = new TimerTaskInfo();
             // Create a timer task to start a new election
-            timeoutTask = new TimerTask() {
+            electionTimerTaskInfo.task = new TimerTask() {
                 public void run() {
-                    transitionRole(RaftServer.Role.CANDIDATE);
+                    synchronized(RaftServer.this) {
+                        if (electionTimerTaskInfo.taskCancelled) {
+                            return;
+                        }
+                        transitionRole(RaftServer.Role.CANDIDATE);
+                    }
                 }
             };
-            myTimer.schedule(timeoutTask, ThreadLocalRandom.current().nextInt(
+            electionTimerTaskInfo.taskCancelled = false;
+            myTimerTaskInfo = electionTimerTaskInfo;
+            
+            myTimer.schedule(myTimerTaskInfo.task, ThreadLocalRandom.current().nextInt(
                     MIN_ELECTION_TIMEOUT_MS, MAX_ELECTION_TIMEOUT_MS + 1));
         };
         
@@ -450,11 +481,17 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                     meta.nextIndex = (persistentState.log.size() - 1) + 1;
                     meta.matchIndex = -1;
                 }
+                
+                TimerTaskInfo heartbeatTimerTaskInfo = new TimerTaskInfo();
 
                 // Create a timer task to send heartbeats
-                timeoutTask = new TimerTask() {
+                heartbeatTimerTaskInfo.task = new TimerTask() {
                     public void run() {
                         synchronized(RaftServer.this) {
+                            if (heartbeatTimerTaskInfo.taskCancelled) {
+                                return;
+                            }
+
                             // send heartbeat messages with zero or more log
                             // entries after a heartbeat timeout has passed
                             logMessage("broadcasting heartbeat messages");
@@ -470,8 +507,10 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                         }
                     }
                 };
+                heartbeatTimerTaskInfo.taskCancelled = false;
+                myTimerTaskInfo = heartbeatTimerTaskInfo;
                 
-                myTimer.scheduleAtFixedRate(timeoutTask, 0, HEARTBEAT_TIMEOUT_MS);
+                myTimer.scheduleAtFixedRate(myTimerTaskInfo.task, 0, HEARTBEAT_TIMEOUT_MS);
                 break;
         }
     }
@@ -495,32 +534,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
         myLogger.info(myId + " :: term=" + this.persistentState.currentTerm + 
             " :: " + role + " :: " + message);
     }
-    
-    /**
-     * An instance of this class is created for every other server in the Raft
-     * cluster. These instances are used to help the running server read
-     * properties and keep track of state corresponding to the other servers.
-     */
-    public class ServerMetadata {
-        public String id; // Each server has a unique id
-        public InetSocketAddress address; // Each server has a unique address
-        // Index of the next log entry to send to that server
-        public int nextIndex;
-        // Index of highest log entry known to be replicated on server 
-        public int matchIndex;
-
-        /**
-         * @param id      see above
-         * @param address see above
-         */
-        public ServerMetadata(String id, InetSocketAddress address) {
-            this.id = id;
-            this.address = address;
-            this.nextIndex = 0;
-            this.matchIndex = -1;
-        }
-    }
-    
+        
     /**
      * Creates+runs a server instance that follows the Raft protocol.
      * @param args args[0] is a comma-delimited ports list (0-indexed)
