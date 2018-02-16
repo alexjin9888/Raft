@@ -17,7 +17,7 @@ public class SerializableReceiver {
     // any data before timing out and throwing an exception
     private static final int READ_TIMEOUT_MS = 20000;
 
-    public interface SerializableHandler {
+    public interface Handler {
         public void handleSerializable(Serializable object);
     }
 
@@ -35,7 +35,7 @@ public class SerializableReceiver {
      */
     private static final Logger myLogger = LogManager.getLogger();
 
-    public SerializableReceiver(InetSocketAddress myAddress, SerializableHandler serializableHandler) {
+    public SerializableReceiver(InetSocketAddress myAddress, Handler serializableHandler) {
         try {
             myListenerSocket = new ServerSocket();
             myListenerSocket.bind(myAddress);
@@ -58,6 +58,8 @@ public class SerializableReceiver {
                         Socket socket = myListenerSocket.accept();
                         myLogger.info(myAddress + " accepted connection from " + socket.getInetAddress());
                         threadPoolService.submit(() -> {
+                            // Uses one object input stream for the lifetime of
+                            // the socket, which is generally the convention.
                             try (Socket peerSocket = socket;
                                     InputStream is = peerSocket.getInputStream();
                                     ObjectInputStream ois = new ObjectInputStream(is)) {

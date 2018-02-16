@@ -29,13 +29,13 @@ import misc.PersistentStateException;
  * TODO: reword comment so that it better describes what this class represents.
  * Make the comment more direct.
  */
-public class RaftServer implements SerializableReceiver.SerializableHandler {
-    // At most one thread should be accessing Raft server state at any point
-    // in time. To help ensure this, all instance methods within this class
-    // are synchronized. Furthermore, if any code in this file accesses server
-    // state in a new thread without using one of the synchronized methods, 
-    // a synchronized block is used with the lock being the RaftServer instance.
-    
+public class RaftServer implements SerializableReceiver.Handler {
+    // To ensure that at most one thread accesses server state at any given
+    // time, all instance methods within this class are synchronized.
+    // Furthermore, if any code in this file accesses server state in a new
+    // thread without using one of the synchronized methods, a synchronized
+    // block is used with the lock being the RaftServer instance.
+        
     /**
      * heartbeat timeout
      */
@@ -62,7 +62,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * cluster. These instances are used to help the running server read
      * properties and keep track of state corresponding to the other servers.
      */
-    class ServerMetadata {
+    private class ServerMetadata {
         InetSocketAddress address; // Each server has a unique address
         // Index of the next log entry to send to that server
         int nextIndex;
@@ -128,6 +128,13 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * @param myId my server id
      */
     public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
+        // As part of initialization, spin up two threads to assist this server
+        // in acting out the Raft protocol. One thread is a timer thread (see
+        // myTimer initialization) and another thread is a message receiver
+        // thread (see serializableReceiver initialization). 
+        // The thread that runs this constructor code will become inactive
+        // after constructor execution.
+        
         this.myId = myId;
         leaderId = null;
         peerMetadataMap = new HashMap<String, ServerMetadata>();
@@ -147,6 +154,10 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
   
         persistentState = new PersistentState(this.myId);
         myTimer = new Timer();
+        
+        // Assumes that persistent state and timer have been initialized before
+        // we transition to follower and perform initial follower behavior.
+        this.role = null;
         transitionRole(RaftServer.Role.FOLLOWER);
 
         this.commitIndex = -1;
@@ -424,8 +435,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             myTimerTaskInfo.taskCancelled = true;
         }
         
-        // Define a Runnable that restarts (or starts) the election timer
-        // when run.
+        // This restarts (or starts) the election timer when run.
         Runnable restartElectionTimer = () -> {
             
             TimerTaskInfo electionTimerTaskInfo = new TimerTaskInfo();

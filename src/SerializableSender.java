@@ -38,10 +38,16 @@ public class SerializableSender {
         threadPoolService = Executors.newCachedThreadPool();
     }
     
-    public synchronized void send(InetSocketAddress recipientAddress, Serializable object) {        
-        // create a serialized copy of the object before we send the
+    public synchronized void send(InetSocketAddress recipientAddress, Serializable object) {
+        // Assumes that the receiver uses one object input stream for
+        // the lifetime of their corresponding socket, which is
+        // generally the convention for persistent connections when
+        // messages come in the form of serializable objects.
+        
+        // Create a serialized copy of the object before we send the
         // serialized copy to the recipient in another thread.
-        // This ensures that no one modifies the object while sending.
+        // This ensures that no one modifies the object while the object
+        // is queued for sending.
         Serializable objectCopy = ObjectUtils.deepClone(object);
         SocketInfo socketInfo = addressToSocketInfo.get(recipientAddress);
         if (socketInfo == null) {
@@ -61,7 +67,6 @@ public class SerializableSender {
         threadPoolService.submit(() -> {
             try {
                 recipientSocketInfo.oos.writeObject(objectCopy);
-                myLogger.info("Sent " + objectCopy.toString() + " to " + recipientAddress);
             } catch (IOException e) {
                 processSendFailure(recipientAddress, objectCopy);
             }
