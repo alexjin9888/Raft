@@ -40,7 +40,7 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the load fails for any reason other
      * than persistent state not existing on disk.
      */
-    public PersistentState(String myId) throws PersistentStateException {
+    public PersistentState(String myId) {
     }
 
     /**
@@ -48,7 +48,7 @@ public class PersistentState implements Serializable {
      * @param currentTerm See top of class file
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void setTerm(int currentTerm) throws PersistentStateException {
+    public void setTerm(int currentTerm) {
         
     }
 
@@ -57,7 +57,7 @@ public class PersistentState implements Serializable {
      * @param votedFor See top of class file
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void setVotedFor(String votedFor) throws PersistentStateException {
+    public void setVotedFor(String votedFor) {
         
     }
     
@@ -67,7 +67,7 @@ public class PersistentState implements Serializable {
      * @param index start location of where we truncate
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void truncateAtIndex(int index) throws PersistentStateException {
+    public void truncateAt(int index) {
         
     }
     
@@ -77,7 +77,7 @@ public class PersistentState implements Serializable {
      * @param newEntry log entry to be appended
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void appendLogEntry(LogEntry newEntry) throws PersistentStateException {
+    public void appendLogEntry(LogEntry newEntry) {
         
     }
 }

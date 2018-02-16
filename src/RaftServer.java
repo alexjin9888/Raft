@@ -19,7 +19,8 @@ import messages.AppendEntriesRequest;
 import messages.RaftMessage;
 import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
-import singletons.PersistentState;
+import misc.PersistentState;
+import misc.PersistentStateException;
 import units.ServerMetadata;
 
 
@@ -37,15 +38,15 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
     // a synchronized block is used with the lock being the RaftServer instance.
     
     /**
-     * heartbeat interval in ms
+     * heartbeat timeout
      */
-    private static final int HEARTBEAT_INTERVAL = 1000;
+    private static final int HEARTBEAT_TIMEOUT_MS = 1000;
 
     // The election timeout is a random variable with the distribution
     // discrete Uniform(min. election timeout, max election timeout).
     // The endpoints are inclusive.
-    private static final int MIN_ELECTION_TIMEOUT = 3000; // in ms
-    private static final int MAX_ELECTION_TIMEOUT = 5000; // in ms
+    private static final int MIN_ELECTION_TIMEOUT_MS = 3000;
+    private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
 
     /**
      * My server id
@@ -167,13 +168,13 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             transitionRole(RaftServer.Role.FOLLOWER);
         }
         if (message instanceof AppendEntriesRequest) {
-            processAppendEntriesRequest((AppendEntriesRequest) message);
+            handleAppendEntriesRequest((AppendEntriesRequest) message);
         } else if (message instanceof RequestVoteRequest) {
-            processRequestVoteRequest((RequestVoteRequest) message);
+            handleRequestVoteRequest((RequestVoteRequest) message);
         } else if (message instanceof AppendEntriesReply) {
-            processAppendEntriesReply((AppendEntriesReply) message);
+            handleAppendEntriesReply((AppendEntriesReply) message);
         } else if (message instanceof RequestVoteReply) {
-            processRequestVoteReply((RequestVoteReply) message);
+            handleRequestVoteReply((RequestVoteReply) message);
         } else {
             // We only support processing the message types listed above.
             assert(false);
@@ -184,18 +185,19 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * Processes an AppendEntries request from a leader and sends a reply.
      * @param request data corresponding to AppendEntries request
      */
-    private synchronized void processAppendEntriesRequest(AppendEntriesRequest request) {
+    private synchronized void handleAppendEntriesRequest(AppendEntriesRequest request) {
         boolean successfulAppend = tryAndCheckSuccessfulAppend(
                 (AppendEntriesRequest) request);
         AppendEntriesReply reply = new AppendEntriesReply(myId, 
             this.persistentState.currentTerm, successfulAppend);
-        saveStateAndSendMessage(peerMetadataMap.get(
-            request.serverId), reply);
+        serializableSender.send(peerMetadataMap.get(
+            request.serverId).address, reply);
     }
     
     /**
      * Examines the log and conditionally modifies server state to check
      * whether a successful append has taken place.
+     * If we fail to append, indicate so using the return value.
      * Only called when processing a AppendEntries request.
      * @param request data corresponding to AppendEntries request
      * @return true iff sender term is not stale and recipient log
@@ -228,15 +230,14 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
         boolean logTermsMatch = this.persistentState.log.get(
             request.prevLogIndex).term == request.prevLogTerm;
         if (!logTermsMatch) {
-            this.persistentState.log =
-                this.persistentState.log.subList(0, request.prevLogIndex);
+            this.persistentState.truncateAt(request.prevLogIndex);
             return false;
         }
 
         // Proj2: is this okay to add log entry unconditionally?
         // Otherwise, check whether this if cond. is necessary
         if (!this.persistentState.log.contains(request.entry)) {
-            this.persistentState.log.add(request.entry);
+            this.persistentState.appendLogEntry(request.entry);
         }
         // Proj2: See Figure 2, All servers section. Consider implementing the
         // the items mentioned there here.
@@ -251,20 +252,20 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * Processes an RequestVote request from a candidate and sends a reply.
      * @param request data corresponding to RequestVotes request
      */
-    private synchronized void processRequestVoteRequest(RequestVoteRequest request) {        
+    private synchronized void handleRequestVoteRequest(RequestVoteRequest request) {        
         boolean grantVote = checkGrantVote(request);
         
         if (grantVote) {
             assert(this.role == RaftServer.Role.FOLLOWER);
             // Re-transition to follower to reset election timer.
             transitionRole(RaftServer.Role.FOLLOWER);
-            this.persistentState.votedFor = request.serverId;
+            updateVotedFor(request.serverId);
             logMessage("granting vote to " + request.serverId);            
         }
 
         RequestVoteReply reply = new RequestVoteReply(myId, 
                 this.persistentState.currentTerm, grantVote);
-        saveStateAndSendMessage(peerMetadataMap.get(request.serverId), reply);
+        serializableSender.send(peerMetadataMap.get(request.serverId).address, reply);
     }
 
     /**
@@ -307,7 +308,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * Processes an AppendEntries reply.
      * @param AppendEntriesReply reply to AppendEntriesReply request
      */
-    private synchronized void processAppendEntriesReply(AppendEntriesReply reply) {
+    private synchronized void handleAppendEntriesReply(AppendEntriesReply reply) {
         if (this.role != RaftServer.Role.LEADER) {
             return;
         }
@@ -371,7 +372,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * Processes an RequestVote reply.
      * @param RequestVoteReply reply to RequestVote request
      */
-    private synchronized void processRequestVoteReply(RequestVoteReply reply) {
+    private synchronized void handleRequestVoteReply(RequestVoteReply reply) {
         if (this.role != RaftServer.Role.CANDIDATE) {
             return;
         }
@@ -427,7 +428,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                 }
             };
             electionTimer.schedule(startElection, ThreadLocalRandom.current().nextInt(
-                    MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT + 1));
+                    MIN_ELECTION_TIMEOUT_MS, MAX_ELECTION_TIMEOUT_MS + 1));
         };
         
         switch (role) {
@@ -437,7 +438,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             case CANDIDATE:
                 // Start an election
                 updateTerm(persistentState.currentTerm + 1);
-                persistentState.votedFor = myId;
+                updateVotedFor(myId);
                 votedForMeSet = new HashSet();
                 votedForMeSet.add(myId);
                 int lastLogIndex = persistentState.log.size()-1;
@@ -450,7 +451,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                     persistentState.currentTerm, lastLogIndex, lastLogTerm);
 
                 for (ServerMetadata meta : peerMetadataMap.values()) {
-                    saveStateAndSendMessage(meta, message);
+                    serializableSender.send(meta.address, message);
                 }
                 restartElectionTimer.run();
                 break;
@@ -470,7 +471,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                     public void run() {
                         synchronized(RaftServer.this) {
                             // send heartbeat messages with zero or more log
-                            // entries after a heartbeat interval has passed
+                            // entries after a heartbeat timeout has passed
                             logMessage("broadcasting heartbeat messages");
 
                             for (ServerMetadata meta : peerMetadataMap.values()) {
@@ -479,41 +480,14 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                                 //        AppendEntriesRequest
                                 RaftMessage message = new AppendEntriesRequest(myId, 
                                     persistentState.currentTerm, -1, -1, null, commitIndex);
-                                saveStateAndSendMessage(meta, message);
+                                serializableSender.send(meta.address, message);
                             }
                         }
                     }
                 };
                 
-                heartbeatTimer.scheduleAtFixedRate(sendHeartbeats, 0, HEARTBEAT_INTERVAL);
+                heartbeatTimer.scheduleAtFixedRate(sendHeartbeats, 0, HEARTBEAT_TIMEOUT_MS);
                 break;
-        }
-    }
-
-    /**
-     * Wrapper around serializableSender.send that enforces the
-     * invariant that we save persistent state to disk before sending
-     * any network requests to recipients.
-     * TODO: see if we still need to enforce the invariant above or if we
-     * can utilize more granular saving. Compare coarse and granular saving
-     * by examining the pros and cons of each.
-     * @param recipientMeta metadata about the recipient incl. address
-     * @param message message that we want to send to recipient
-     */
-    private synchronized void saveStateAndSendMessage(ServerMetadata recipientMeta, 
-        RaftMessage message) {
-        // If I experience an I/O error while saving the persistent state,
-        // don't try to send the request.
-        try {
-            this.persistentState.save();
-            serializableSender.send(recipientMeta.address, message); 
-        } catch (IOException e) {
-            // TODO: Verify that the only type of error reported here
-            // should be a persistent state error.
-            
-            // TODO: we need to check if the IO error came from persistent state
-            // if so, we will probably want to die here instead of continuing
-            // operation, since this is a fatal error.
         }
     }
     
@@ -523,8 +497,27 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * @param newTerm new term that we want to update the current term to.
      */
     private synchronized void updateTerm(int newTerm) {
-        this.persistentState.currentTerm = newTerm;
-        this.persistentState.votedFor = null;
+        try {
+            this.persistentState.setTerm(newTerm);
+            this.persistentState.setVotedFor(null);
+        } catch (PersistentStateException e) {
+            // TODO check the print is okay
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Wrapper around current term setter that enforces some invariants
+     * relating to updating our knowledge of the current term.
+     * @param newTerm new term that we want to update the current term to.
+     */
+    private synchronized void updateVotedFor(String votedFor) {
+        try {
+            this.persistentState.setVotedFor(votedFor);
+        } catch (PersistentStateException e) {
+            // TODO check the print is okay
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     /**

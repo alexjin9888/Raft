@@ -13,9 +13,9 @@ import org.apache.logging.log4j.Logger;
 
 public class SerializableReceiver {
 
-    // Amount of time (in ms) that a read socket is willing to block without
-    // receiving any data before timing out and throwing an exception
-    private static final int READ_TIMEOUT = 20000;
+    // Amount of time that a read socket is willing to block without receiving
+    // any data before timing out and throwing an exception
+    private static final int READ_TIMEOUT_MS = 20000;
 
     public interface SerializableHandler {
         public void handleSerializable(Serializable object);
@@ -61,7 +61,7 @@ public class SerializableReceiver {
                             try (Socket peerSocket = socket;
                                     InputStream is = peerSocket.getInputStream();
                                     ObjectInputStream ois = new ObjectInputStream(is)) {
-                                peerSocket.setSoTimeout(READ_TIMEOUT);
+                                peerSocket.setSoTimeout(READ_TIMEOUT_MS);
                                 // We only exit the while loop below when an
                                 // I/O error or read timeout errors.
                                 while (true) {
