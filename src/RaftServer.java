@@ -68,6 +68,9 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      */
     private PersistentState persistentState;
     
+    private Timer myTimer;
+    private TimerTask timeoutTask;
+    
     private static enum Role {
         FOLLOWER,
         CANDIDATE,
@@ -92,8 +95,6 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      */
     private Set<String> votedForMeSet;
     
-    private Timer electionTimer;
-    private Timer heartbeatTimer;
     
     private SerializableSender serializableSender;
 
@@ -123,8 +124,9 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                         new ServerMetadata(elemId, elemAddress));
             }
         }
-
+  
         persistentState = new PersistentState(this.myId);
+        myTimer = new Timer();
         transitionRole(RaftServer.Role.FOLLOWER);
 
         this.commitIndex = -1;
@@ -397,25 +399,20 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
         }
         this.role = role;
         
-        if (electionTimer != null) {
-            electionTimer.cancel();
-        }
-        
-        if (heartbeatTimer != null) {
-            heartbeatTimer.cancel();
+        if (timeoutTask != null) {
+            timeoutTask.cancel();
         }
         
         // Define a Runnable that restarts (or starts) the election timer
         // when run.
         Runnable restartElectionTimer = () -> {
-            electionTimer = new Timer();
-            TimerTask startElection = new TimerTask() {
+            // Create a timer task to start a new election
+            timeoutTask = new TimerTask() {
                 public void run() {
-                    // Starts a new election
                     transitionRole(RaftServer.Role.CANDIDATE);
                 }
             };
-            electionTimer.schedule(startElection, ThreadLocalRandom.current().nextInt(
+            myTimer.schedule(timeoutTask, ThreadLocalRandom.current().nextInt(
                     MIN_ELECTION_TIMEOUT_MS, MAX_ELECTION_TIMEOUT_MS + 1));
         };
         
@@ -427,7 +424,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                 // Start an election
                 updateTerm(persistentState.currentTerm + 1);
                 persistentState.setVotedFor(myId);
-                votedForMeSet = new HashSet();
+                votedForMeSet = new HashSet<String>();
                 votedForMeSet.add(myId);
                 int lastLogIndex = persistentState.log.size()-1;
                 // lastLogTerm = -1 means there are no log entries
@@ -454,8 +451,8 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                     meta.matchIndex = -1;
                 }
 
-                heartbeatTimer = new Timer();
-                TimerTask sendHeartbeats = new TimerTask() {
+                // Create a timer task to send heartbeats
+                timeoutTask = new TimerTask() {
                     public void run() {
                         synchronized(RaftServer.this) {
                             // send heartbeat messages with zero or more log
@@ -474,7 +471,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
                     }
                 };
                 
-                heartbeatTimer.scheduleAtFixedRate(sendHeartbeats, 0, HEARTBEAT_TIMEOUT_MS);
+                myTimer.scheduleAtFixedRate(timeoutTask, 0, HEARTBEAT_TIMEOUT_MS);
                 break;
         }
     }
