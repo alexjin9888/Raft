@@ -14,7 +14,7 @@ import utils.ObjectUtils;
 
 public class SerializableSender {
         
-    private HashMap<InetSocketAddress, SocketOOSTuple> addressToSocketOOS;
+    private HashMap<InetSocketAddress, SocketInfo> addressToSocketInfo;
     
     /**
      * ExecutorService instance manages a thread pool for us, which
@@ -30,7 +30,7 @@ public class SerializableSender {
     
     
     public SerializableSender() {
-        addressToSocketOOS = new HashMap<InetSocketAddress, SocketOOSTuple>();        
+        addressToSocketInfo = new HashMap<InetSocketAddress, SocketInfo>();        
         threadPoolService = Executors.newCachedThreadPool();
     }
     
@@ -39,24 +39,24 @@ public class SerializableSender {
         // serialized copy to the recipient in another thread.
         // This ensures that no one modifies the object while sending.
         Serializable objectCopy = ObjectUtils.deepClone(object);
-        SocketOOSTuple socketOOSTuple = addressToSocketOOS.get(recipientAddress);
-        if (socketOOSTuple == null) {
-            socketOOSTuple = new SocketOOSTuple();
-            addressToSocketOOS.put(recipientAddress, socketOOSTuple);
-            socketOOSTuple.socket = new Socket();
+        SocketInfo socketInfo = addressToSocketInfo.get(recipientAddress);
+        if (socketInfo == null) {
+            socketInfo = new SocketInfo();
+            addressToSocketInfo.put(recipientAddress, socketInfo);
+            socketInfo.socket = new Socket();
             try {
-                socketOOSTuple.socket.connect(recipientAddress);
-                socketOOSTuple.oos = new ObjectOutputStream(socketOOSTuple.socket.getOutputStream());
+                socketInfo.socket.connect(recipientAddress);
+                socketInfo.oos = new ObjectOutputStream(socketInfo.socket.getOutputStream());
                 myLogger.info("Now connected to " + recipientAddress);
             } catch (IOException e) {
                 processSendFailure(recipientAddress, objectCopy);
                 return;
             }
         }
-        final SocketOOSTuple recipientSocketOOSTuple = socketOOSTuple; 
+        final SocketInfo recipientSocketInfo = socketInfo; 
         threadPoolService.submit(() -> {
             try {
-                recipientSocketOOSTuple.oos.writeObject(objectCopy);
+                recipientSocketInfo.oos.writeObject(objectCopy);
                 myLogger.info("Sent " + objectCopy.toString() + " to " + recipientAddress);
             } catch (IOException e) {
                 processSendFailure(recipientAddress, objectCopy);
@@ -67,17 +67,17 @@ public class SerializableSender {
     private synchronized void processSendFailure(InetSocketAddress recipientAddress, Serializable object) {
         myLogger.info("Failed to send " + object.toString() + " to " + recipientAddress);
         
-        SocketOOSTuple socketOOSTuple = addressToSocketOOS.get(recipientAddress);
-        if (socketOOSTuple == null) {
+        SocketInfo socketInfo = addressToSocketInfo.get(recipientAddress);
+        if (socketInfo == null) {
             return;
         }
-        addressToSocketOOS.remove(recipientAddress);
+        addressToSocketInfo.remove(recipientAddress);
         try {
-            if (socketOOSTuple.oos != null) {
-                socketOOSTuple.oos.close();
+            if (socketInfo.oos != null) {
+                socketInfo.oos.close();
             }
-            if (socketOOSTuple.socket != null) {
-                socketOOSTuple.socket.close();
+            if (socketInfo.socket != null) {
+                socketInfo.socket.close();
             }
         } catch (IOException e1) {
             // We silently ignore the error since we already report the failed
@@ -85,7 +85,7 @@ public class SerializableSender {
         }
     }
     
-    public class SocketOOSTuple {
+    public class SocketInfo {
         Socket socket;
         ObjectOutputStream oos;
     }

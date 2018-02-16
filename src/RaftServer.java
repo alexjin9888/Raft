@@ -89,9 +89,9 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
     
     /**
      * (Candidate-specific) Set containing server IDs that voted for me during
-     * current election term.
+     * the current election term.
      */
-    private Set votedForMeSet;
+    private Set<String> votedForMeSet;
     
     private Timer electionTimer;
     private Timer heartbeatTimer;
@@ -125,18 +125,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             }
         }
 
-        try {
-            persistentState = new PersistentState(this.myId);
-        } catch (IOException e) {
-            // TODO: print more specific error message depending on the
-            // type of I/O error (e.g., persistent state failed to load).
-            // Note: This is a fatal error.
-            // TODO: Maybe I will want to throw a runtime exception in
-            // the PersistentState class instead.
-            e.printStackTrace();
-            System.exit(1);
-        }
-        
+        persistentState = new PersistentState(this.myId);
         transitionRole(RaftServer.Role.FOLLOWER);
 
         this.commitIndex = -1;
@@ -195,13 +184,13 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
     }
     
     /**
-     * Examines the log and conditionally modifies server state to check
-     * whether a successful append has taken place.
-     * If we fail to append, indicate so using the return value.
+     * Examines the log and attempts to append log entry if one is present in
+     * the request. Conditionally modifies server state and reports back whether
+     * a successful append has taken place.
      * Only called when processing a AppendEntries request.
      * @param request data corresponding to AppendEntries request
-     * @return true iff sender term is not stale and recipient log
-     *         contained entry matching prevLogIndex and prevLogTerm
+     * @return true iff sender term is not stale and recipient log satisfies
+     *              AppendEntries success conditions as specified by Raft paper.
      */
     private synchronized boolean tryAndCheckSuccessfulAppend(AppendEntriesRequest request) {
         if (request.term < this.persistentState.currentTerm) {
@@ -259,7 +248,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             assert(this.role == RaftServer.Role.FOLLOWER);
             // Re-transition to follower to reset election timer.
             transitionRole(RaftServer.Role.FOLLOWER);
-            updateVotedFor(request.serverId);
+            persistentState.setVotedFor(request.serverId);
             logMessage("granting vote to " + request.serverId);            
         }
 
@@ -401,8 +390,8 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * @param role new role that the server instance transitions to. 
      */
     private synchronized void transitionRole(Role role) {
-        // The defined transitions above allow us to manage all the timer logic
-        // in one place.
+        // The defined transitions above allow us to put all the timer logic
+        // and accesses in a single place/method (this method).
         
         if (this.role != role) {
             logMessage("updating role to " + role);
@@ -438,7 +427,7 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
             case CANDIDATE:
                 // Start an election
                 updateTerm(persistentState.currentTerm + 1);
-                updateVotedFor(myId);
+                persistentState.setVotedFor(myId);
                 votedForMeSet = new HashSet();
                 votedForMeSet.add(myId);
                 int lastLogIndex = persistentState.log.size()-1;
@@ -497,27 +486,8 @@ public class RaftServer implements SerializableReceiver.SerializableHandler {
      * @param newTerm new term that we want to update the current term to.
      */
     private synchronized void updateTerm(int newTerm) {
-        try {
-            this.persistentState.setTerm(newTerm);
-            this.persistentState.setVotedFor(null);
-        } catch (PersistentStateException e) {
-            // TODO check the print is okay
-            throw new RuntimeException(e.getMessage(), e);
-        }
-    }
-    
-    /**
-     * Wrapper around current term setter that enforces some invariants
-     * relating to updating our knowledge of the current term.
-     * @param newTerm new term that we want to update the current term to.
-     */
-    private synchronized void updateVotedFor(String votedFor) {
-        try {
-            this.persistentState.setVotedFor(votedFor);
-        } catch (PersistentStateException e) {
-            // TODO check the print is okay
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        this.persistentState.setTerm(newTerm);
+        this.persistentState.setVotedFor(null);
     }
 
     /**

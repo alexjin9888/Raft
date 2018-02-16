@@ -11,7 +11,7 @@ import units.LogEntry;
 import utils.ObjectUtils;
 
 /**
- * An instance of this class is used to manage the persistent state of a server
+ * Manages the persistent state of a Raft server.
  */
 public class PersistentState implements Serializable {
     
@@ -41,6 +41,10 @@ public class PersistentState implements Serializable {
      * than persistent state not existing on disk.
      */
     public PersistentState(String myId) {
+        this.myId = myId;
+        this.currentTerm = 0;
+        this.votedFor = null;
+        this.log = new ArrayList<LogEntry>();
     }
 
     /**
@@ -49,7 +53,7 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public void setTerm(int currentTerm) {
-        
+        this.currentTerm = currentTerm;
     }
 
     /**
@@ -58,7 +62,7 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public void setVotedFor(String votedFor) {
-        
+        this.votedFor = votedFor;
     }
     
     /**
@@ -68,7 +72,7 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public void truncateAt(int index) {
-        
+        this.log.subList(index, this.log.size()).clear();
     }
     
     /**
@@ -77,7 +81,7 @@ public class PersistentState implements Serializable {
      * @param newEntry log entry to be appended
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void appendLogEntry(LogEntry newEntry) {
-        
+    public void appendLogEntry(LogEntry newEntry) {        
+        this.log.add(newEntry);
     }
 }

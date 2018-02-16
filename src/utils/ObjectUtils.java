@@ -22,7 +22,7 @@ public abstract class ObjectUtils {
      * @param object       object to be serialized
      * @return             a byte array representing the serialized object
      */
-    public static byte[] serialize(Serializable object) {
+    private static byte[] serialize(Serializable object) {
         byte[] objectBytes;
                 
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -42,7 +42,7 @@ public abstract class ObjectUtils {
      * @param objectBytes  a byte array to be deserialized
      * @return             an object created from deserializing the byte array
      */
-    public static Serializable deserialize(byte[] objectBytes) {
+    private static Serializable deserialize(byte[] objectBytes) {
         Object object;
 
 
