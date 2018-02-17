@@ -52,7 +52,7 @@ public class PersistentState implements Serializable {
      * @param currentTerm See top of class file
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void setTerm(int currentTerm) {
+    public synchronized void setTerm(int currentTerm) {
         this.currentTerm = currentTerm;
     }
 
@@ -61,7 +61,7 @@ public class PersistentState implements Serializable {
      * @param votedFor See top of class file
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void setVotedFor(String votedFor) {
+    public synchronized void setVotedFor(String votedFor) {
         this.votedFor = votedFor;
     }
     
@@ -71,7 +71,7 @@ public class PersistentState implements Serializable {
      * @param index start location of where we truncate
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void truncateAt(int index) {
+    public synchronized void truncateAt(int index) {
         this.log.subList(index, this.log.size()).clear();
     }
     
@@ -81,7 +81,7 @@ public class PersistentState implements Serializable {
      * @param newEntry log entry to be appended
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public void appendLogEntry(LogEntry newEntry) {        
+    public synchronized void appendLogEntry(LogEntry newEntry) {        
         this.log.add(newEntry);
     }
 }
