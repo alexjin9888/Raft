@@ -9,12 +9,12 @@ public class AppendEntriesReply extends RaftMessage {
     private static final long serialVersionUID = 1L;
 
     /** 
-     * true iff follower contained entry matching prevLogIndex and prevLogTerm
+     * true iff we appended all the entries included in the sender's request
      */
     public boolean successfulAppend;
 
     /**
-     * Index of the next log entry to send
+     * Index of the next log entry to send to us
      */
     public int nextIndex;
     /**
@@ -29,9 +29,12 @@ public class AppendEntriesReply extends RaftMessage {
         this.successfulAppend = successfulAppend;
         this.nextIndex = nextIndex;
     }
+    
     @Override
     public String toString() {
         return "AppendEntriesReply [successfulAppend=" + successfulAppend
-                + ", nextIndex=" + nextIndex + "]";
+                + ", nextIndex=" + nextIndex + ", serverId=" + serverId
+                + ", term=" + term + "]";
     }
+
 }

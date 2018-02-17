@@ -57,17 +57,11 @@ public class RaftServer implements SerializableReceiver.Handler {
      * The endpoints are inclusive.
      */
     private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
-
+    
     /**
-     * value used when we do not know the index of highest log entry that is
-     * replicated on a server
+     * Value used when trying to get the term of a non-existent log entry.
      */
-    private static final int UNKNOWN_LOG_INDEX = -1;
-
-    /**
-     * Value used to indicate unknown term or non-existent log entry
-     */
-    private static final int UNKNOWN_LOG_TERM = -1;
+    private static final int UNDEFINED_LOG_TERM = -1;
 
     /**
      * My server id
@@ -150,12 +144,12 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param myId my server id
      */
     public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
-        // As part of initialization, spin up two threads to assist this server
-        // in acting out the Raft protocol. One thread is a timer thread (see
-        // myTimer initialization) and another thread is a message receiver
+        // As part of initialization, spins up two threads to help this inst.
+        // carry out the Raft protocol. One thread is a timer thread (see
+        // myTimer initialization) and another thread is a Serializable receiver
         // thread (see serializableReceiver initialization). 
-        // The thread that runs this constructor code will become inactive
-        // after constructor execution.
+        // The thread that runs this constructor will exit after starting up
+        // the receiver thread.
         
         this.myId = myId;
         leaderId = null;
@@ -173,6 +167,8 @@ public class RaftServer implements SerializableReceiver.Handler {
         }
   
         persistentState = new PersistentState(this.myId);
+        
+        // Spins up a thread that allows us to schedule periodic tasks
         myTimer = new Timer();
         
         // Assumes that persistent state and timer have been initialized before
@@ -186,13 +182,12 @@ public class RaftServer implements SerializableReceiver.Handler {
         serializableSender = new SerializableSender();
         
         // Spins up a receiver thread that manages a server socket that listens
-        // for incoming messages.
+        // for incoming messages. The thread handles them by calling
+        // handleSerializable in this class.
         // TODO: add a note about why we don't use serializableReceiver var.
         SerializableReceiver serializableReceiver =
                 new SerializableReceiver(serverAddressesMap.get(myId), this);
         
-        myLogger.debug(this.myId + " :: Configuration File Defined To Be :: "+
-                System.getProperty("log4j.configurationFile"));
         logMessage("successfully booted");
     }
     
@@ -229,9 +224,16 @@ public class RaftServer implements SerializableReceiver.Handler {
     private synchronized void handleAppendEntriesRequest(AppendEntriesRequest request) {
         boolean successfulAppend = tryAndCheckSuccessfulAppend(
                 (AppendEntriesRequest) request);
-        AppendEntriesReply reply = new AppendEntriesReply(myId, 
-            this.persistentState.currentTerm, successfulAppend, 
-            request.prevLogIndex + 1 + request.entries.size());
+        
+        int nextIndex;
+        if (successfulAppend) {
+            nextIndex = request.prevLogIndex + 1 + request.entries.size();
+        } else {
+            nextIndex = request.prevLogIndex > 0 ? request.prevLogIndex : 0;
+        }
+        
+        AppendEntriesReply reply = new AppendEntriesReply(myId,
+                this.persistentState.currentTerm, successfulAppend, nextIndex);
         serializableSender.send(peerMetadataMap.get(
             request.serverId).address, reply);
     }
@@ -248,42 +250,47 @@ public class RaftServer implements SerializableReceiver.Handler {
     private synchronized boolean tryAndCheckSuccessfulAppend(AppendEntriesRequest request) {
         if (request.term < this.persistentState.currentTerm) {
             return false;
-        } else {
-            // AppendEntries request is valid
-            
-            // If we were a leader, we should have downgraded to follower
-            // prior to processing a valid AppendEntries request.
-            assert(this.role != RaftServer.Role.LEADER);
-            
-            // As a candidate or follower, transition to follower to reset
-            // the election timer.
-            transitionRole(RaftServer.Role.FOLLOWER);
         }
+        
+        // AppendEntries request is valid
+        
+        // If we were a leader, we should have downgraded to follower
+        // prior to processing a valid AppendEntries request.
+        assert(this.role != RaftServer.Role.LEADER);
+        
+        // As a candidate or follower, transition to follower to reset
+        // the election timer.
+        transitionRole(RaftServer.Role.FOLLOWER);
         this.leaderId = request.serverId;
 
-        if (request.prevLogIndex == UNKNOWN_LOG_INDEX) {
+        if (request.prevLogIndex == -1) {
+            // TODO: reason more carefully about when the request will have this prevLogIndex value.
+            // Either the request sender has an empty log,
+            // and/or this Raft server instance has an empty log.
             return true;
         }
 
-        if (!logHasIndex(request.prevLogIndex)) {
+        if (!logEntryHasIndex(request.prevLogIndex)) {
             return false;
         }
 
-        boolean logTermsMatch = this.persistentState.log.get(
-            request.prevLogIndex).term == request.prevLogTerm;
-        if (!logTermsMatch) {
+        if (this.persistentState.log.get(request.prevLogIndex).term
+                != request.prevLogTerm) {
             this.persistentState.truncateAt(request.prevLogIndex);
             return false;
         }
 
-        if (request.entries.size() >= 0) {
+        if (request.entries.size() > 0) {
+            // TODO: consider adding entries at specific indices instead of
+            // always appending to the end. See if there are any problems
+            // associated with always appending without truncating first.
             this.persistentState.appendLogEntries(request.entries);
         }
-        // Proj2: See Figure 2, All servers section. Consider implementing the
-        // the items mentioned there here.
         if (request.leaderCommit > this.commitIndex) {
             this.commitIndex = Math.min(request.leaderCommit, 
                 this.persistentState.log.size() - 1);
+            // Proj2: Implement logic associated with Figure 2, Rules for Servers,
+            // All Servers, bullet point 1
         }
         return true;
     }
@@ -329,19 +336,24 @@ public class RaftServer implements SerializableReceiver.Handler {
         }
 
         int lastLogIndex = this.persistentState.log.size() - 1;
-        int lastLogTerm = lastLogIndex < 0 ? 
-                          UNKNOWN_LOG_TERM : 
-                          this.persistentState.log.get(lastLogIndex).term;
-        // Proj2: make sure that this logic is correct for checking that a 
-        //        candidate's log is at least as up-to-date as ours.
-        //        Test this logic afterwards
-        boolean candidateLogIsUpdated = request.lastLogIndex >= lastLogIndex && 
-            request.lastLogTerm >= lastLogTerm;
-        if (!candidateLogIsUpdated) {
-            return false;
+        int lastLogTerm = logEntryHasIndex(lastLogIndex)
+                ? this.persistentState.log.get(lastLogIndex).term
+                : UNDEFINED_LOG_TERM;
+                
+        // The rest of this method makes sure that we grant vote iff the
+        // candidate log is up-to-date.
+
+        if (request.lastLogTerm != lastLogTerm) {
+            if (lastLogTerm == UNDEFINED_LOG_TERM) {
+                return true;
+            } else if (request.lastLogTerm == UNDEFINED_LOG_TERM) {
+                return false;
+            } else {
+                return request.lastLogTerm >= lastLogTerm;
+            }
         }
         
-        return true;
+        return request.lastLogIndex >= lastLogIndex;
     }
 
     /**
@@ -356,21 +368,17 @@ public class RaftServer implements SerializableReceiver.Handler {
             return;
         }
         
-        // Proj2: write logic to handle AppendEntries message (as leader)
         ServerMetadata meta = peerMetadataMap.get(reply.serverId);
+        meta.nextIndex = reply.nextIndex;
+        
         if (reply.successfulAppend) {
-            // The current implementation assumes that we send at most one
-            // log entry per AppendEntries requests (that is, no optimizations
-            // to the Raft protocol).
-            meta.matchIndex = meta.nextIndex;
-            meta.nextIndex = reply.nextIndex;
+            meta.matchIndex = meta.nextIndex - 1;
+            // TODO: replace testMajorityN with computeUpdatedCommitIdx
             if (testMajorityN(meta.matchIndex)) {
                 logMessage("updating commitIndex to " + meta.matchIndex);
                 commitIndex = meta.matchIndex;
-            }
-        } else {
-            if (meta.nextIndex > 0) {
-                meta.nextIndex -= 1;
+                // Proj2: Implement logic associated with Figure 2, Rules for Servers,
+                // All Servers, bullet point 1
             }
         }
     }
@@ -407,11 +415,7 @@ public class RaftServer implements SerializableReceiver.Handler {
         }
         return true;
     }
-
-    private synchronized void updateCommitIndexAndApplyCommands() {
-
-    }
-
+    
     /**
      * Processes an RequestVote reply.
      * @param RequestVoteReply reply to RequestVote request
@@ -466,6 +470,9 @@ public class RaftServer implements SerializableReceiver.Handler {
             electionTimerTaskInfo.task = new TimerTask() {
                 public void run() {
                     synchronized(RaftServer.this) {
+                        // Any role transition that happens prior to the
+                        // RaftServer instance lock being acquired will
+                        // invalidate this task.
                         if (electionTimerTaskInfo.taskCancelled) {
                             return;
                         }
@@ -490,10 +497,9 @@ public class RaftServer implements SerializableReceiver.Handler {
                 persistentState.setVotedFor(myId);
                 votedForMeSet = new HashSet<String>();
                 votedForMeSet.add(myId);
-                int lastLogIndex = persistentState.log.size()-1;
-                // lastLogTerm = -1 means there are no log entries
-                int lastLogTerm = lastLogIndex < 0 ?
-                        UNKNOWN_LOG_TERM : persistentState.log.get(lastLogIndex).term;
+                int lastLogIndex = persistentState.log.size() - 1;
+                int lastLogTerm = logEntryHasIndex(lastLogIndex) ?
+                        persistentState.log.get(lastLogIndex).term : UNDEFINED_LOG_TERM;
 
                 logMessage("new election - broadcasting RequestVote requests");
                 RaftMessage request = new RequestVoteRequest(myId, 
@@ -507,12 +513,8 @@ public class RaftServer implements SerializableReceiver.Handler {
             case LEADER:
                 // Initializes volatile state specific to leader role.
                 for (ServerMetadata meta : peerMetadataMap.values()) {
-                    // Subtracting 1 makes it apparent that we want to send
-                    // the entry corresponding to the next available index.
-                    // With proper synchronization, this ensures that we will
-                    // initially send empty AppendEntries requests.
-                    meta.nextIndex = (persistentState.log.size() - 1) + 1;
-                    meta.matchIndex = UNKNOWN_LOG_INDEX;
+                    meta.nextIndex = persistentState.log.size();
+                    meta.matchIndex = -1;
                 }
                 
                 TimerTaskInfo heartbeatTimerTaskInfo = new TimerTaskInfo();
@@ -521,6 +523,9 @@ public class RaftServer implements SerializableReceiver.Handler {
                 heartbeatTimerTaskInfo.task = new TimerTask() {
                     public void run() {
                         synchronized(RaftServer.this) {
+                            // Any role transition that happens prior to the
+                            // RaftServer instance lock being acquired will
+                            // invalidate this task.
                             if (heartbeatTimerTaskInfo.taskCancelled) {
                                 return;
                             }
@@ -531,12 +536,15 @@ public class RaftServer implements SerializableReceiver.Handler {
 
                             for (ServerMetadata meta : peerMetadataMap.values()) {
                                 int prevLogIndex = meta.nextIndex - 1;
-                                int prevLogTerm = logHasIndex(prevLogIndex)
-                                    ? UNKNOWN_LOG_TERM
-                                    :persistentState.log.get(prevLogIndex).term;
+                                int prevLogTerm = logEntryHasIndex(prevLogIndex)
+                                    ? persistentState.log.get(prevLogIndex).term
+                                    : UNDEFINED_LOG_TERM;
                                 ArrayList<LogEntry> logEntries =
                                     new ArrayList<LogEntry>();
-                                if (logHasIndex(meta.nextIndex)) {
+                                // Note: Currently, we send at most one log
+                                // entry to the recipient. This may be something
+                                // we want to optimize in the future.
+                                if (logEntryHasIndex(meta.nextIndex)) {
                                     logEntries.add(persistentState.log.get(meta.nextIndex));
                                 }
                                 AppendEntriesRequest request =
@@ -556,7 +564,7 @@ public class RaftServer implements SerializableReceiver.Handler {
         }
     }
 
-    private boolean logHasIndex(int index) {
+    private boolean logEntryHasIndex(int index) {
         return index >= 0 && index < this.persistentState.log.size();
     }
     

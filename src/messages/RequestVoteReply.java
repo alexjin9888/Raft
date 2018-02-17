@@ -14,8 +14,8 @@ public class RequestVoteReply extends RaftMessage {
     public boolean grantVote;
 
     /**
-     * @param serverId    see Message.java
-     * @param term        see Message.java
+     * @param serverId    See RaftMessage.java
+     * @param term        See RaftMessage.java
      * @param grantVote see above
      */
     public RequestVoteReply(String serverId, int term, boolean grantVote) {

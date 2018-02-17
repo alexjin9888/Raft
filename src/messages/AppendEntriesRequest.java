@@ -18,7 +18,6 @@ public class AppendEntriesRequest extends RaftMessage {
     // term of prevLogIndex entry
     public int prevLogTerm;
     // log entry to store
-    // Proj2: decide whether or not to send more than one entry
     public ArrayList<LogEntry> entries;
     // leader's commitIndex
     public int leaderCommit;

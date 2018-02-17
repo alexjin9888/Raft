@@ -57,7 +57,7 @@ public class PersistentState implements Serializable {
     }
 
     /**
-     * Set voted-for-ID and then write to persistent state on disk.
+     * Set id of server you voted for and then write to persistent state on disk
      * @param votedFor See top of class file
      * @throws PersistentStateException If the state fails to persist to disk
      */
@@ -72,6 +72,9 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void truncateAt(int index) {
+        // TODO: if we truncate at an index that is > valid idx, don't do
+        // anything (e.g., don't do any disk I/O) and return.
+        
         this.log.subList(index, this.log.size()).clear();
     }
     

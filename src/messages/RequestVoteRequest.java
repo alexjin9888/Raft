@@ -14,8 +14,8 @@ public class RequestVoteRequest extends RaftMessage {
     public int lastLogTerm;
 
     /**
-     * @param serverId     see Message.java
-     * @param term         see Message.java
+     * @param serverId     See RaftMessage.java
+     * @param term         See RaftMessage.java
      * @param lastLogIndex see above
      * @param lastLogTerm  see above
      */

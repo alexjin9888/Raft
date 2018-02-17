@@ -2,23 +2,36 @@ package units;
 
 /**
  * A log entry in a server's command log.
- * Proj2: figure out what to do with command string
  */
 public class LogEntry {
-    public String command; // To be executed on each server
+    public int index; // index of log entry in the log
     public int term; // term of the leader when it sent this log
+    public String command; // To be executed on each server
 
     /**
+     * @param index   see above
      * @param command see above
      * @param term    see above
      */
-    public LogEntry(String command, int term) {
-        this.command = command;
+    public LogEntry(int index, int term, String command) {
+        this.index = index;
         this.term = term;
+        this.command = command;
     }
     
     @Override
     public String toString() {
-        return "LogEntry [command=" + command + ", term=" + term + "]";
+        return "LogEntry [index=" + index + ", term=" + term + ", command="
+                + command + "]";
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == null)
+            return false;
+        
+        LogEntry other = (LogEntry) obj;
+        return this.index == other.index && this.term == other.term;
+    }
+    
 }
