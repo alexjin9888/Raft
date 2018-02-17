@@ -76,12 +76,12 @@ public class PersistentState implements Serializable {
     }
     
     /**
-     * Append new entry to log.
+     * Append new entries to log.
      * Persist updated portion of log state to disk.
      * @param newEntry log entry to be appended
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public synchronized void appendLogEntry(LogEntry newEntry) {        
-        this.log.add(newEntry);
+    public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {        
+        this.log.addAll(newEntries);
     }
 }

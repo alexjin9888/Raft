@@ -1,5 +1,7 @@
 package messages;
 
+import java.util.ArrayList;
+
 import units.LogEntry;
 
 /**
@@ -17,29 +19,29 @@ public class AppendEntriesRequest extends RaftMessage {
     public int prevLogTerm;
     // log entry to store
     // Proj2: decide whether or not to send more than one entry
-    public LogEntry entry;
+    public ArrayList<LogEntry> entries;
     // leader's commitIndex
     public int leaderCommit;
     /**
-     * @param serverId     see Message.java
-     * @param term         see Message.java
-     * @param prevLogIndex see above
-     * @param prevLogTerm  see above
-     * @param entry        see above
-     * @param leaderCommit see above
+     * @param serverId     see RaftMessage.java
+     * @param term         see RaftMessage.java
+     * @param prevLogIndex see top of class file
+     * @param prevLogTerm  see top of class file
+     * @param entries      see top of class file
+     * @param leaderCommit see top of class file
      */
     public AppendEntriesRequest(String serverId, int term, int prevLogIndex,
-        int prevLogTerm, LogEntry entry, int leaderCommit) {
+        int prevLogTerm, ArrayList<LogEntry> entries, int leaderCommit) {
         super(serverId, term);
         this.prevLogIndex = prevLogIndex;
         this.prevLogTerm = prevLogTerm;
-        this.entry = entry;
+        this.entries = entries;
         this.leaderCommit = leaderCommit;
     }
     @Override
     public String toString() {
         return "AppendEntriesRequest [prevLogIndex=" + prevLogIndex
-                + ", prevLogTerm=" + prevLogTerm + ", entry=" + entry
+                + ", prevLogTerm=" + prevLogTerm + ", entries=" + entries
                 + ", leaderCommit=" + leaderCommit + ", serverId=" + serverId
                 + ", term=" + term + "]";
     }

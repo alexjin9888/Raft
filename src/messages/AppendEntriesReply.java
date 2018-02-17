@@ -12,19 +12,26 @@ public class AppendEntriesReply extends RaftMessage {
      * true iff follower contained entry matching prevLogIndex and prevLogTerm
      */
     public boolean successfulAppend;
+
     /**
-     * @param serverId          see Message.java
-     * @param term              see Message.java
-     * @param successfulAppend  see above
+     * Index of the next log entry to send
      */
-    public AppendEntriesReply(String serverId, int term, boolean successfulAppend) {
+    public int nextIndex;
+    /**
+     * @param serverId          see RaftMessage.java
+     * @param term              see RaftMessage.java
+     * @param successfulAppend  see top of class file
+     * @param nextIndex         see top of class file
+     */
+    public AppendEntriesReply(String serverId, int term,
+            boolean successfulAppend, int nextIndex) {
         super(serverId, term);
         this.successfulAppend = successfulAppend;
+        this.nextIndex = nextIndex;
     }
     @Override
     public String toString() {
         return "AppendEntriesReply [successfulAppend=" + successfulAppend
-                + ", serverId=" + serverId + ", term=" + term + "]";
+                + ", nextIndex=" + nextIndex + "]";
     }
-
 }
