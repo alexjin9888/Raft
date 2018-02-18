@@ -189,6 +189,7 @@ public class RaftServer implements SerializableReceiver.Handler {
             serializableSender = new SerializableSender();
             
             this.logCommandApplier = Executors.newFixedThreadPool(1);
+            outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
 
             // Spins up a thread that allows us to schedule periodic tasks
             myTimer = new Timer();
