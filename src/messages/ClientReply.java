@@ -16,8 +16,8 @@ public class ClientReply implements Serializable {
      */
     public InetSocketAddress leaderAddress;
     /**
-     * True iff the command sent by the client was successfully executed on
-     * the Raft cluster.
+     * True iff the command sent by the client was received by a leader who 
+     * successfully executed the command.
      */
     public boolean success;
     /**

@@ -27,6 +27,11 @@ public class PersistentState implements Serializable {
      * List of the server's log entries
      */
     public List<LogEntry> log;
+    /**
+     * index of highest log entry applied to state machine
+     * (initialized to -1, increases monotonically)
+     */
+     public int lastApplied;
         
     /**
      * Unique server identification and lookup ID for persistent state on disk
@@ -44,6 +49,7 @@ public class PersistentState implements Serializable {
         this.myId = myId;
         this.currentTerm = 0;
         this.votedFor = null;
+        this.lastApplied = -1;
         this.log = new ArrayList<LogEntry>();
     }
 
@@ -84,7 +90,15 @@ public class PersistentState implements Serializable {
      * @param newEntry log entry to be appended
      * @throws PersistentStateException If the state fails to persist to disk
      */
-    public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {        
+    public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {
+        // TODO: note that the caller may pass in an empty list
         this.log.addAll(newEntries);
+    }
+
+    /**
+     * Increment the last applied index variable and persist state to disk.
+     */
+    public synchronized void incrementLastApplied() {
+        this.lastApplied += 1;
     }
 }

@@ -70,7 +70,7 @@ public class SerializableSender {
             } catch (IOException e) {
                 processSendFailure(recipientAddress, objectCopy);
             }
-        }); 
+        });
     }
     
     private synchronized void processSendFailure(InetSocketAddress recipientAddress, Serializable object) {
