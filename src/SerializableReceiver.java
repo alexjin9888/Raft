@@ -5,6 +5,7 @@ import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -15,7 +16,7 @@ public class SerializableReceiver {
 
     // Amount of time that a read socket is willing to block without receiving
     // any data before timing out and throwing an exception
-    private static final int READ_TIMEOUT_MS = 20000;
+    private static final int READ_TIMEOUT_MS = 5000;
 
     public interface Handler {
         public void handleSerializable(Serializable object);
@@ -56,20 +57,22 @@ public class SerializableReceiver {
                 while(true) {
                     try {
                         Socket socket = myListenerSocket.accept();
-                        myLogger.info(myAddress + " accepted connection from " + socket.getInetAddress());
                         threadPoolService.submit(() -> {
                             // Uses one object input stream for the lifetime of
                             // the socket, which is generally the convention.
-                            try (Socket peerSocket = socket;
-                                    InputStream is = peerSocket.getInputStream();
+                            try (Socket senderSocket = socket;
+                                    InputStream is = senderSocket.getInputStream();
                                     ObjectInputStream ois = new ObjectInputStream(is)) {
-                                peerSocket.setSoTimeout(READ_TIMEOUT_MS);
+                                senderSocket.setSoTimeout(READ_TIMEOUT_MS);
                                 // We only exit the while loop below when an
                                 // I/O error or read timeout errors.
                                 while (true) {
                                     // We block until a serializable object is read or an I/O error occurs.
                                     serializableHandler.handleSerializable((Serializable) ois.readObject());
                                 }
+                            } catch (SocketTimeoutException e) {
+                                // Sender stopped talking to us so we close
+                                // socket resources and continue.
                             } catch (IOException e) {
                                 // TODO: think about whether or not to print
                                 // any further messages here.

@@ -1,8 +1,6 @@
-import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Scanner;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -13,10 +11,8 @@ import messages.ClientRequest;
 
 public class RaftClient implements SerializableReceiver.Handler {
     
-    // TODO: see if this retry actually works
     /**
-     * Amount of time elapsed without receiving an associated response before
-     * we retry sending a request.
+     * Amount of time to wait for a reply before we send another request.
      */
     private static final int RETRY_TIMEOUT_MS = 5000;
     
@@ -29,7 +25,7 @@ public class RaftClient implements SerializableReceiver.Handler {
     private InetSocketAddress myAddress;
     
     /**
-     * Address of the server that we think is a leader.
+     * Address of the server that we think is the current leader.
      */
     private InetSocketAddress leaderAddress;
     
@@ -57,7 +53,7 @@ public class RaftClient implements SerializableReceiver.Handler {
     private ClientRequest outstandingRequest;
         
     /**
-     * Scanner for user command line input.
+     * Scanner for receiving command line input from the user.
      */
     private Scanner commandReader;
     
@@ -69,11 +65,9 @@ public class RaftClient implements SerializableReceiver.Handler {
             randomizeLeaderAddress();
 
             commandReader = new Scanner(System.in);
-            
-            retryTimer = new Timer();
-            
             outstandingRequest = null;
-            
+            retryTimer = new Timer();
+
             serializableSender = new SerializableSender();
             SerializableReceiver serializableReceiver =
                     new SerializableReceiver(this.myAddress, this);
@@ -82,18 +76,41 @@ public class RaftClient implements SerializableReceiver.Handler {
         }
     }
     
+    public synchronized void handleSerializable(Serializable object) {
+        if (!(object instanceof ClientReply)) {
+            System.out.println("Don't know how to process the serializable object: " + object);
+            return;
+        }
+        
+        ClientReply reply = (ClientReply) object;
+        if (!reply.success) {
+            if (reply.leaderAddress == null) {
+                return;
+            }
+            leaderAddress = reply.leaderAddress;
+            serializableSender.send(leaderAddress, outstandingRequest);
+            return;
+        }
+        
+        System.out.println(reply.result);
+        outstandingRequest = null;
+        retryRequestTaskInfo.task.cancel();
+        retryRequestTaskInfo.taskCancelled = true;
+        waitForAndProcessInput();
+    }
+    
     private synchronized void randomizeLeaderAddress() {
         leaderAddress = serverAddresses.get(ThreadLocalRandom.current().nextInt(
                 serverAddresses.size())); 
     }
     
     private synchronized void waitForAndProcessInput() {
+        System.out.println("Please enter a bash command:");
         String command = commandReader.nextLine();
         outstandingRequest = new ClientRequest(myAddress, command);
         serializableSender.send(leaderAddress, outstandingRequest);
         
-        retryRequestTaskInfo = new TimerTaskInfo();
-        
+        retryRequestTaskInfo = new TimerTaskInfo(); 
         retryRequestTaskInfo.task = new TimerTask() {
                 public void run() {
                     synchronized(RaftClient.this) {
@@ -110,37 +127,11 @@ public class RaftClient implements SerializableReceiver.Handler {
         retryTimer.scheduleAtFixedRate(retryRequestTaskInfo.task, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
   }
     
-    public synchronized void handleSerializable(Serializable object) {
-        if (!(object instanceof ClientReply)) {
-            System.out.println("Don't know how to process serializable object: " + object);
-            return;
-        }
-        
-        ClientReply reply = (ClientReply) object;
-        if (!reply.success) {
-            if (reply.leaderAddress == null) {
-                return;
-            }
-            
-            leaderAddress = reply.leaderAddress;
-            
-            serializableSender.send(leaderAddress, outstandingRequest);
-            
-            return;
-        }
-        
-        System.out.println(reply.result);
-        retryRequestTaskInfo.task.cancel();
-        retryRequestTaskInfo.taskCancelled = true;
-        outstandingRequest = null;
-        waitForAndProcessInput();
-    }
-    
     public static void main(String[] args) {
         // TODO: do argument parsing here to get the list of server addresses
-        // TODO: ensure that list of servers is non-empty
+        // TODO: ensure that list of server addresses passed in is non-empty
         
-        // TODO: get rid of this hardcoding
+        // TODO: get rid of all of this hardcoding
         ArrayList<InetSocketAddress> serverAddresses = new ArrayList<InetSocketAddress>();
         
         for (int i = 0; i < 3; i++) {

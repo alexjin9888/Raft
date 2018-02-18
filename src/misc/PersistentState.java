@@ -78,7 +78,7 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void truncateAt(int index) {
-        // TODO: if we truncate at an index that is > valid idx, don't do
+        // TODO: if we truncate at an index that is NOT a valid idx, don't do
         // anything (e.g., don't do any disk I/O) and return.
         
         this.log.subList(index, this.log.size()).clear();
@@ -91,7 +91,9 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {
-        // TODO: note that the caller may pass in an empty list
+        // TODO: make sure that this function handles things efficiently in the
+        // case that the caller passes in an empty list.
+
         this.log.addAll(newEntries);
     }
 

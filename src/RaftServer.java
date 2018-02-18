@@ -138,7 +138,7 @@ public class RaftServer implements SerializableReceiver.Handler {
      * ExecutorService instance that manages a single thread to execute log
      * commands in order.
      */
-    private ExecutorService logCommandApplier;
+    private ExecutorService commandApplierService;
     /**
      * Map that holds information that is helpful in determining whether we want
      * to send a reply to previously received client requests.
@@ -184,11 +184,15 @@ public class RaftServer implements SerializableReceiver.Handler {
             }
 
             persistentState = new PersistentState(this.myId);
-            this.commitIndex = this.persistentState.lastApplied;
+            // The last applied value from persistent state may not be the
+            // most up-to-date commit index in the Raft cluster, but we will
+            // quickly update our commit index as necessary after talking with
+            // peers.
+            commitIndex = this.persistentState.lastApplied;
 
             serializableSender = new SerializableSender();
             
-            this.logCommandApplier = Executors.newFixedThreadPool(1);
+            this.commandApplierService = Executors.newSingleThreadExecutor();
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
 
             // Spins up a thread that allows us to schedule periodic tasks
@@ -199,7 +203,7 @@ public class RaftServer implements SerializableReceiver.Handler {
             // Assumes that persistent state and timer have been initialized before
             // we transition to follower and perform initial follower behavior.
             this.role = null;
-            transitionRole(RaftServer.Role.FOLLOWER);
+            transitionRole(Role.FOLLOWER);
 
             // Spins up a receiver thread that manages a server socket that listens
             // for incoming messages. The thread handles them by calling
@@ -224,14 +228,14 @@ public class RaftServer implements SerializableReceiver.Handler {
             return;
         }
         if (!(object instanceof RaftMessage)) {
-            logMessage("Don't know how to process serializable object: " + object);
+            logMessage("Don't know how to process the serializable object: " + object);
             return;
         }
         RaftMessage message = (RaftMessage) object;
         logMessage("Received " + message);
         if (message.term > this.persistentState.currentTerm) {
             updateTerm(message.term);
-            transitionRole(RaftServer.Role.FOLLOWER);
+            transitionRole(Role.FOLLOWER);
         }
         if (message instanceof AppendEntriesRequest) {
             handleAppendEntriesRequest((AppendEntriesRequest) message);
@@ -242,7 +246,7 @@ public class RaftServer implements SerializableReceiver.Handler {
         } else if (message instanceof RequestVoteReply) {
             handleRequestVoteReply((RequestVoteReply) message);
         } else {
-            logMessage("Don't know how to process Raft message: " + message);
+            logMessage("Don't know how to process the Raft message: " + message);
             return;
         }
     }
@@ -255,9 +259,9 @@ public class RaftServer implements SerializableReceiver.Handler {
         if (this.role==Role.LEADER) {
             LogEntry logEntry = new LogEntry(this.persistentState.log.size(), 
                     this.persistentState.currentTerm, request.command);
-            ArrayList<LogEntry> entries = new ArrayList<LogEntry>();
-            entries.add(logEntry);
-            this.persistentState.appendLogEntries(entries);
+            ArrayList<LogEntry> logEntries = new ArrayList<LogEntry>();
+            logEntries.add(logEntry);
+            this.persistentState.appendLogEntries(logEntries);
             outstandingClientRequestsMap.put(logEntry, request);
         } else {
             InetSocketAddress leaderAddress =
@@ -298,7 +302,7 @@ public class RaftServer implements SerializableReceiver.Handler {
         }
         for (int i=commitIndex+1; i <= newCommitIndex; i++) {
             LogEntry logEntry = this.persistentState.log.get(i);
-            logCommandApplier.submit(() -> {
+            commandApplierService.submit(() -> {
                 String result = execute(logEntry.command);
                 synchronized(RaftServer.this) {                    
                     this.persistentState.incrementLastApplied();
@@ -345,16 +349,16 @@ public class RaftServer implements SerializableReceiver.Handler {
 
         // If we were a leader, we should have downgraded to follower
         // prior to processing a valid AppendEntries request.
-        assert(this.role != RaftServer.Role.LEADER);
+        assert(this.role != Role.LEADER);
 
         // As a candidate or follower, transition to follower to reset
         // the election timer.
-        transitionRole(RaftServer.Role.FOLLOWER);
+        transitionRole(Role.FOLLOWER);
         this.leaderId = request.serverId;
 
         if (request.prevLogIndex == -1) {
-            // Here, the sender is trying to append zero or more entries
-            // starting at index zero
+            // Here, the sender is trying to get us to append zero or more
+            // entries starting at index zero
             return true;
         }
 
@@ -378,9 +382,9 @@ public class RaftServer implements SerializableReceiver.Handler {
         boolean grantVote = checkGrantVote(request);
 
         if (grantVote) {
-            assert(this.role == RaftServer.Role.FOLLOWER);
+            assert(this.role == Role.FOLLOWER);
             // Re-transition to follower to reset election timer.
-            transitionRole(RaftServer.Role.FOLLOWER);
+            transitionRole(Role.FOLLOWER);
             persistentState.setVotedFor(request.serverId);
             logMessage("granting vote to " + request.serverId);            
         }
@@ -439,7 +443,7 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param AppendEntriesReply reply to AppendEntriesReply request
      */
     private synchronized void handleAppendEntriesReply(AppendEntriesReply reply) {
-        if (this.role != RaftServer.Role.LEADER) {
+        if (this.role != Role.LEADER) {
             return;
         }
         if (reply.term < this.persistentState.currentTerm) {
@@ -469,7 +473,7 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param RequestVoteReply reply to RequestVote request
      */
     private synchronized void handleRequestVoteReply(RequestVoteReply reply) {
-        if (this.role != RaftServer.Role.CANDIDATE) {
+        if (this.role != Role.CANDIDATE) {
             return;
         }
         if (reply.term < this.persistentState.currentTerm) {
@@ -479,7 +483,7 @@ public class RaftServer implements SerializableReceiver.Handler {
             votedForMeSet.add(reply.serverId);
         }
         if (votedForMeSet.size() > (peerMetadataMap.size()+1)/2) {
-            transitionRole(RaftServer.Role.LEADER);
+            transitionRole(Role.LEADER);
         }
     }
 
@@ -524,7 +528,7 @@ public class RaftServer implements SerializableReceiver.Handler {
                         if (electionTimerTaskInfo.taskCancelled) {
                             return;
                         }
-                        transitionRole(RaftServer.Role.CANDIDATE);
+                        transitionRole(Role.CANDIDATE);
                     }
                 }
             };
@@ -647,6 +651,8 @@ public class RaftServer implements SerializableReceiver.Handler {
      *               which the server will start a listener channel on
      */
     public static void main(String[] args) {
+        // TODO: ensure that list of server addresses passed in is non-empty
+
         int myPortIndex = -1;
         String[] allPortStrings = null;
         int[] allPorts = null;

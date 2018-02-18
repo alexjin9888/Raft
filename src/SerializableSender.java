@@ -57,7 +57,6 @@ public class SerializableSender {
             try {
                 socketInfo.socket.connect(recipientAddress);
                 socketInfo.oos = new ObjectOutputStream(socketInfo.socket.getOutputStream());
-                myLogger.info("Now connected to " + recipientAddress);
             } catch (IOException e) {
                 processSendFailure(recipientAddress, objectCopy);
                 return;
