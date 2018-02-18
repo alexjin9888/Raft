@@ -1,9 +1,11 @@
 package units;
 
+import java.io.Serializable;
+
 /**
  * A log entry in a server's command log.
  */
-public class LogEntry {
+public class LogEntry implements Serializable {
     public int index; // index of log entry in the log
     public int term; // term of the leader when it sent this log
     public String command; // To be executed on each server

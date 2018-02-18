@@ -224,7 +224,7 @@ public class RaftServer implements SerializableReceiver.Handler {
             return;
         }
         if (!(object instanceof RaftMessage)) {
-            logMessage("Unrecognizable serializable object: "+object);
+            logMessage("Don't know how to process serializable object: " + object);
             return;
         }
         RaftMessage message = (RaftMessage) object;
@@ -241,6 +241,9 @@ public class RaftServer implements SerializableReceiver.Handler {
             handleAppendEntriesReply((AppendEntriesReply) message);
         } else if (message instanceof RequestVoteReply) {
             handleRequestVoteReply((RequestVoteReply) message);
+        } else {
+            logMessage("Don't know how to process Raft message: " + message);
+            return;
         }
     }
 
@@ -293,11 +296,11 @@ public class RaftServer implements SerializableReceiver.Handler {
         if (newCommitIndex <= this.commitIndex) {
             return;
         }
-        for (int i=commitIndex+1; i<newCommitIndex; i++) {
+        for (int i=commitIndex+1; i <= newCommitIndex; i++) {
             LogEntry logEntry = this.persistentState.log.get(i);
             logCommandApplier.submit(() -> {
                 String result = execute(logEntry.command);
-                synchronized(RaftServer.this) {
+                synchronized(RaftServer.this) {                    
                     this.persistentState.incrementLastApplied();
                     if (this.role!=Role.LEADER) {
                         return;
@@ -309,6 +312,7 @@ public class RaftServer implements SerializableReceiver.Handler {
                         return;
                     }
                     ClientReply reply =new ClientReply(myAddress, true, result);
+                                        
                     serializableSender.send(clientRequest.clientAddress, reply);
                     this.outstandingClientRequestsMap.remove(logEntry);
                 }
