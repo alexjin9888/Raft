@@ -222,14 +222,22 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param request data corresponding to AppendEntries request
      */
     private synchronized void handleAppendEntriesRequest(AppendEntriesRequest request) {
-        boolean successfulAppend = tryAndCheckSuccessfulAppend(
-                (AppendEntriesRequest) request);
-        
+        boolean successfulAppend = false;
         int nextIndex;
-        if (successfulAppend) {
+
+        if (checkCanAppend((AppendEntriesRequest) request)) {
+            this.persistentState.truncateAt(request.prevLogIndex+1);
+            this.persistentState.appendLogEntries(request.entries);
+            successfulAppend = true;
+            if (request.leaderCommit > this.commitIndex) {
+                this.commitIndex = Math.min(request.leaderCommit, 
+                    this.persistentState.log.size() - 1);
+                // Proj2: Implement logic associated with Figure 2, Rules for Servers,
+                // All Servers, bullet point 1
+            }
             nextIndex = request.prevLogIndex + 1 + request.entries.size();
         } else {
-            nextIndex = request.prevLogIndex > 0 ? request.prevLogIndex : 0;
+            nextIndex = Math.max(request.prevLogIndex, 0);
         }
         
         AppendEntriesReply reply = new AppendEntriesReply(myId,
@@ -239,6 +247,7 @@ public class RaftServer implements SerializableReceiver.Handler {
     }
     
     /**
+     * TODO fix comment
      * Examines the log and attempts to append log entry if one is present in
      * the request. Conditionally modifies server state and reports back whether
      * a successful append has taken place.
@@ -247,7 +256,7 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @return true iff sender term is not stale and recipient log satisfies
      *              AppendEntries success conditions as specified by Raft paper.
      */
-    private synchronized boolean tryAndCheckSuccessfulAppend(AppendEntriesRequest request) {
+    private synchronized boolean checkCanAppend(AppendEntriesRequest request) {
         if (request.term < this.persistentState.currentTerm) {
             return false;
         }
@@ -264,9 +273,8 @@ public class RaftServer implements SerializableReceiver.Handler {
         this.leaderId = request.serverId;
 
         if (request.prevLogIndex == -1) {
-            // TODO: reason more carefully about when the request will have this prevLogIndex value.
-            // Either the request sender has an empty log,
-            // and/or this Raft server instance has an empty log.
+            // Here, the sender is trying to append zero or more entries
+            // starting at index zero
             return true;
         }
 
@@ -276,22 +284,9 @@ public class RaftServer implements SerializableReceiver.Handler {
 
         if (this.persistentState.log.get(request.prevLogIndex).term
                 != request.prevLogTerm) {
-            this.persistentState.truncateAt(request.prevLogIndex);
             return false;
         }
 
-        if (request.entries.size() > 0) {
-            // TODO: consider adding entries at specific indices instead of
-            // always appending to the end. See if there are any problems
-            // associated with always appending without truncating first.
-            this.persistentState.appendLogEntries(request.entries);
-        }
-        if (request.leaderCommit > this.commitIndex) {
-            this.commitIndex = Math.min(request.leaderCommit, 
-                this.persistentState.log.size() - 1);
-            // Proj2: Implement logic associated with Figure 2, Rules for Servers,
-            // All Servers, bullet point 1
-        }
         return true;
     }
 
@@ -328,29 +323,32 @@ public class RaftServer implements SerializableReceiver.Handler {
             return false;
         }
 
-        boolean canVote = this.persistentState.votedFor == null || 
-            this.persistentState.votedFor.equals(request.serverId);
+        boolean votedForAnotherServer = !(this.persistentState.votedFor == null
+            || this.persistentState.votedFor.equals(request.serverId));
 
-        if (!canVote) {
+        if (votedForAnotherServer) {
+            return false;
+        }
+        
+        // The rest of this method makes sure that we grant vote iff the
+        // candidate log is up-to-date.
+
+        if (this.persistentState.log.size()==0) {
+            return true;
+        }
+        if (request.lastLogIndex == -1) {
+            // Here, our sender's log is empty and ours is not
             return false;
         }
 
         int lastLogIndex = this.persistentState.log.size() - 1;
-        int lastLogTerm = logEntryHasIndex(lastLogIndex)
-                ? this.persistentState.log.get(lastLogIndex).term
-                : UNDEFINED_LOG_TERM;
-                
-        // The rest of this method makes sure that we grant vote iff the
-        // candidate log is up-to-date.
+        int lastLogTerm = this.persistentState.log.get(lastLogIndex).term;
 
-        if (request.lastLogTerm != lastLogTerm) {
-            if (lastLogTerm == UNDEFINED_LOG_TERM) {
-                return true;
-            } else if (request.lastLogTerm == UNDEFINED_LOG_TERM) {
-                return false;
-            } else {
-                return request.lastLogTerm >= lastLogTerm;
-            }
+        if (request.lastLogTerm > lastLogTerm) {
+            return true;
+        }
+        if (request.lastLogTerm < lastLogTerm) {
+            return false;
         }
         
         return request.lastLogIndex >= lastLogIndex;
