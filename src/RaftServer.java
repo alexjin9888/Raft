@@ -316,7 +316,7 @@ public class RaftServer implements SerializableReceiver.Handler {
         this.commitIndex = newCommitIndex;
     }
 
-    // TODO fix this xa hoi
+    // TODO implement this
     private String execute(String command) {
         return command;
     }
@@ -452,10 +452,10 @@ public class RaftServer implements SerializableReceiver.Handler {
                 commitIndices[i] = m.matchIndex;
                 i += 1;
             }
-            commitIndices[commitIndices.length-1] = this.persistentState.log.size();
+            commitIndices[commitIndices.length-1] =
+                this.persistentState.log.size();
             Arrays.sort(commitIndices, Collections.reverseOrder());
-            int majorityIndex = commitIndices.length / 2;
-            updateCommitIndex(commitIndices[majorityIndex]);
+            updateCommitIndex(commitIndices[commitIndices.length / 2]);
         }
     }
 
