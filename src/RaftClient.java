@@ -37,13 +37,13 @@ public class RaftClient implements SerializableReceiver.Handler {
     /**
      * Timer used to facilitate the retrying of requests.
      */
-    private Timer retryTimer;
+    private Timer myTimer;
 
     class TimerTaskInfo {
         TimerTask task;
         boolean taskCancelled;
     }
-    private TimerTaskInfo retryRequestTaskInfo;
+    private TimerTaskInfo myTimerTaskInfo;
         
     private SerializableSender serializableSender;
     
@@ -66,7 +66,7 @@ public class RaftClient implements SerializableReceiver.Handler {
 
             commandReader = new Scanner(System.in);
             outstandingRequest = null;
-            retryTimer = new Timer();
+            myTimer = new Timer();
 
             serializableSender = new SerializableSender();
             SerializableReceiver serializableReceiver =
@@ -88,33 +88,30 @@ public class RaftClient implements SerializableReceiver.Handler {
                 return;
             }
             leaderAddress = reply.leaderAddress;
-            serializableSender.send(leaderAddress, outstandingRequest);
+            sendRetryingRequest(leaderAddress, outstandingRequest);
             return;
         }
         
         System.out.println(reply.result);
         outstandingRequest = null;
-        retryRequestTaskInfo.task.cancel();
-        retryRequestTaskInfo.taskCancelled = true;
+        myTimerTaskInfo.task.cancel();
+        myTimerTaskInfo.taskCancelled = true;
         waitForAndProcessInput();
     }
     
-    private synchronized void randomizeLeaderAddress() {
-        leaderAddress = serverAddresses.get(ThreadLocalRandom.current().nextInt(
-                serverAddresses.size())); 
-    }
-    
-    private synchronized void waitForAndProcessInput() {
-        System.out.println("Please enter a bash command:");
-        String command = commandReader.nextLine();
-        outstandingRequest = new ClientRequest(myAddress, command);
-        serializableSender.send(leaderAddress, outstandingRequest);
+    private synchronized void sendRetryingRequest(InetSocketAddress address, ClientRequest request) {
+        serializableSender.send(address, request);
         
-        retryRequestTaskInfo = new TimerTaskInfo(); 
-        retryRequestTaskInfo.task = new TimerTask() {
+        if (myTimerTaskInfo != null) {
+            myTimerTaskInfo.task.cancel();
+            myTimerTaskInfo.taskCancelled = true;
+        }
+        
+        TimerTaskInfo retryTimerTaskInfo = new TimerTaskInfo(); 
+        retryTimerTaskInfo.task = new TimerTask() {
                 public void run() {
                     synchronized(RaftClient.this) {
-                        if (retryRequestTaskInfo.taskCancelled) {
+                        if (retryTimerTaskInfo.taskCancelled) {
                             return;
                         }
 
@@ -123,8 +120,22 @@ public class RaftClient implements SerializableReceiver.Handler {
                     }
                 }
         };
-        retryRequestTaskInfo.taskCancelled = false;
-        retryTimer.scheduleAtFixedRate(retryRequestTaskInfo.task, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
+        retryTimerTaskInfo.taskCancelled = false;
+        
+        myTimerTaskInfo = retryTimerTaskInfo;
+        myTimer.scheduleAtFixedRate(myTimerTaskInfo.task, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
+    }
+    
+    private synchronized void randomizeLeaderAddress() {
+        leaderAddress = serverAddresses.get(ThreadLocalRandom.current().nextInt(
+                serverAddresses.size()));
+    }
+    
+    private synchronized void waitForAndProcessInput() {
+        System.out.println("Please enter a bash command:");
+        String command = commandReader.nextLine();
+        outstandingRequest = new ClientRequest(myAddress, command);
+        sendRetryingRequest(leaderAddress, outstandingRequest);
   }
     
     public static void main(String[] args) {

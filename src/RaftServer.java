@@ -44,7 +44,7 @@ public class RaftServer implements SerializableReceiver.Handler {
     // block is used with the lock being the RaftServer instance.
 
     /**
-     * heartbeat timeout
+     * Time elapsed before we send out another round of heartbeat messages
      */
     private static final int HEARTBEAT_TIMEOUT_MS = 1000;
 
@@ -135,13 +135,12 @@ public class RaftServer implements SerializableReceiver.Handler {
     private SerializableSender serializableSender;
 
     /**
-     * ExecutorService instance that manages a single thread to execute log
-     * commands in order.
+     * Single thread manager that will execute the commands for us in order.
      */
     private ExecutorService commandApplierService;
     /**
-     * Map that holds information that is helpful in determining whether we want
-     * to send a reply to previously received client requests.
+     * Map that we can query to see whether we need to reply to a particular
+     * client after applying the command of a log entry.
      */
     private HashMap<LogEntry, ClientRequest> outstandingClientRequestsMap;
     
@@ -309,7 +308,6 @@ public class RaftServer implements SerializableReceiver.Handler {
                     if (this.role!=Role.LEADER) {
                         return;
                     }
-                    // TODO think if we want to use <logEntry, address> instead
                     ClientRequest clientRequest = 
                             this.outstandingClientRequestsMap.get(logEntry);
                     if (clientRequest == null) {
