@@ -55,7 +55,7 @@ public class RaftClient implements SerializableReceiver.Handler {
     private Scanner commandReader;
     
     public RaftClient(InetSocketAddress myAddress, ArrayList<InetSocketAddress> serverAddresses) {
-        synchronized(this) {
+        synchronized(RaftClient.this) {
             this.myAddress = myAddress;
             this.serverAddresses = serverAddresses;
                     

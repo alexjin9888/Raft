@@ -51,6 +51,9 @@ public class PersistentState implements Serializable {
         this.votedFor = null;
         this.lastApplied = -1;
         this.log = new ArrayList<LogEntry>();
+        
+        // TODO: load list of log entries from disk using the second LogEntry
+        // constructor. See LogEntry.java for details.
     }
 
     /**

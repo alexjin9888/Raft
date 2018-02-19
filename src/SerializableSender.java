@@ -5,18 +5,22 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Timer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import misc.CheckingCancelTimerTask;
 import utils.ObjectUtils;
 
 public class SerializableSender {
         
     class SocketInfo {
+        InetSocketAddress address;
         Socket socket;
         ObjectOutputStream oos;
+        CheckingCancelTimerTask removeSocketTask;
     }
     private HashMap<InetSocketAddress, SocketInfo> addressToSocketInfo;
     
@@ -26,6 +30,8 @@ public class SerializableSender {
      */
     private ExecutorService threadPoolService;
     
+    private Timer myTimer;
+    
     /**
      * Tracing and debugging logger;
      * see: https://logging.apache.org/log4j/2.x/manual/api.html
@@ -34,7 +40,8 @@ public class SerializableSender {
     
     
     public SerializableSender() {
-        addressToSocketInfo = new HashMap<InetSocketAddress, SocketInfo>();        
+        addressToSocketInfo = new HashMap<InetSocketAddress, SocketInfo>();
+        myTimer = new Timer();
         threadPoolService = Executors.newCachedThreadPool();
     }
     
@@ -53,33 +60,64 @@ public class SerializableSender {
         if (socketInfo == null) {
             socketInfo = new SocketInfo();
             addressToSocketInfo.put(recipientAddress, socketInfo);
+            socketInfo.address = recipientAddress;
             socketInfo.socket = new Socket();
             try {
                 socketInfo.socket.connect(recipientAddress);
                 socketInfo.oos = new ObjectOutputStream(socketInfo.socket.getOutputStream());
+                rescheduleRemoveSocketTask(socketInfo);
             } catch (IOException e) {
-                processSendFailure(recipientAddress, objectCopy);
+                myLogger.info("Failed to send " + object.toString() + " to " + recipientAddress);
+                removeSocket(recipientAddress);
                 return;
             }
         }
-        final SocketInfo recipientSocketInfo = socketInfo; 
+        final SocketInfo writeSocketInfo = socketInfo; 
         threadPoolService.submit(() -> {
             try {
-                recipientSocketInfo.oos.writeObject(objectCopy);
+                writeSocketInfo.oos.writeObject(objectCopy);
+                rescheduleRemoveSocketTask(writeSocketInfo);
             } catch (IOException e) {
-                processSendFailure(recipientAddress, objectCopy);
+                myLogger.info("Failed to send " + object.toString() + " to " + recipientAddress);
+                removeSocket(recipientAddress);
             }
         });
     }
     
-    private synchronized void processSendFailure(InetSocketAddress recipientAddress, Serializable object) {
-        myLogger.info("Failed to send " + object.toString() + " to " + recipientAddress);
+    /**
+     * Reschedules (or schedules) the remove socket task. 
+     * TODO: finish writing comments for this method.
+     * @param socketInfo
+     */
+    private synchronized void rescheduleRemoveSocketTask(SocketInfo socketInfo) {
+        if (socketInfo.removeSocketTask != null) {
+            socketInfo.removeSocketTask.cancel();
+        }
         
-        SocketInfo socketInfo = addressToSocketInfo.get(recipientAddress);
+        socketInfo.removeSocketTask = new CheckingCancelTimerTask() {
+            public void run() {
+                synchronized(SerializableSender.this) {
+                    if (this.isCancelled) {
+                        return;
+                    }
+                    removeSocket(socketInfo.address);
+                }
+            }
+        };
+        // TODO: change the number to READ_WRITE_TIMEOUT
+        myTimer.schedule(socketInfo.removeSocketTask, 5000);
+    }
+    
+    private synchronized void removeSocket(InetSocketAddress address) {
+        SocketInfo socketInfo = addressToSocketInfo.get(address);
         if (socketInfo == null) {
             return;
         }
-        addressToSocketInfo.remove(recipientAddress);
+        addressToSocketInfo.remove(address);
+        
+        if (socketInfo.removeSocketTask != null) {
+            socketInfo.removeSocketTask.cancel();
+        }
         try {
             if (socketInfo.oos != null) {
                 socketInfo.oos.close();

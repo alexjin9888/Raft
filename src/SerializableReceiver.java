@@ -17,7 +17,7 @@ public class SerializableReceiver {
 
     // Amount of time that a read socket is willing to block without receiving
     // any data before timing out and throwing an exception
-    private static final int READ_TIMEOUT_MS = 5000;
+    private static final int READ_TIMEOUT_MS = 300000;
 
     public interface Handler {
         public void handleSerializable(Serializable object);
@@ -61,10 +61,10 @@ public class SerializableReceiver {
                         threadPoolService.submit(() -> {
                             // Uses one object input stream for the lifetime of
                             // the socket, which is generally the convention.
-                            try (Socket senderSocket = socket;
-                                    InputStream is = senderSocket.getInputStream();
+                            try (Socket readSocket = socket;
+                                    InputStream is = readSocket.getInputStream();
                                     ObjectInputStream ois = new ObjectInputStream(is)) {
-                                senderSocket.setSoTimeout(READ_TIMEOUT_MS);
+                                readSocket.setSoTimeout(READ_TIMEOUT_MS);
                                 // We only exit the while loop below when an
                                 // I/O error or read timeout errors.
                                 while (true) {

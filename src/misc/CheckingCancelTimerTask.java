@@ -3,8 +3,8 @@ package misc;
 import java.util.TimerTask;
 
 /**
- * A TimerTask subclass that allows you to check whether the TimerTask instance
- * was cancelled. 
+ * A TimerTask subclass that allows you to check whether a TimerTask has
+ * been cancelled.
  */
 public abstract class CheckingCancelTimerTask extends TimerTask {
     public boolean isCancelled;

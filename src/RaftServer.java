@@ -154,7 +154,7 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param myId my server id
      */
     public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
-        synchronized(this) {
+        synchronized(RaftServer.this) {
             // As part of initialization, spins up two threads to help this inst.
             // carry out the Raft protocol. One thread is a timer thread (see
             // myTimer initialization) and another thread is a Serializable receiver
@@ -263,6 +263,7 @@ public class RaftServer implements SerializableReceiver.Handler {
             InetSocketAddress leaderAddress =
                     peerMetadataMap.get(leaderId).address;
             ClientReply reply = new ClientReply(leaderAddress, false, null);
+            logMessage("Sending " + reply);
             serializableSender.send(request.clientAddress, reply);
         }
     }
@@ -272,10 +273,25 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param request data corresponding to AppendEntries request
      */
     private synchronized void handleAppendEntriesRequest(AppendEntriesRequest request) {
+        boolean senderTermStale = request.term < this.persistentState.currentTerm;
+        
+        if (!senderTermStale) {
+            // Here, AppendEntries request is valid
+
+            // If we were a leader, we should have downgraded to follower
+            // prior to processing a valid AppendEntries request.
+            assert(this.role != Role.LEADER);
+
+            // As a candidate or follower, transition to follower to reset
+            // the election timer.
+            transitionRole(Role.FOLLOWER);
+            this.leaderId = request.serverId;
+        }
+        
         boolean successfulAppend = false;
         int nextIndex;
 
-        if (checkCanAppend((AppendEntriesRequest) request)) {
+        if (!senderTermStale && checkCanAppend(request.prevLogIndex, request.prevLogTerm)) {
             this.persistentState.truncateAt(request.prevLogIndex+1);
             this.persistentState.appendLogEntries(request.entries);
             successfulAppend = true;
@@ -298,47 +314,25 @@ public class RaftServer implements SerializableReceiver.Handler {
     }
 
     /**
-     * TODO fix comment
-     * Examines the log and attempts to append log entry if one is present in
-     * the request. Conditionally modifies server state and reports back whether
-     * a successful append has taken place.
+     * Checks whether we can append the sent log entries to our log.
      * Only called when processing a AppendEntries request.
-     * @param request data corresponding to AppendEntries request
-     * @return true iff sender term is not stale and recipient log satisfies
-     *              AppendEntries success conditions as specified by Raft paper.
+     * @param senderPrevLogIndex prevLogIndex field of the request.
+     * @param senderPrevLogterm  prevLogTerm field of the request.
+     * @return true iff we can append the sent entries.
      */
-    private synchronized boolean checkCanAppend(AppendEntriesRequest request) {
-        if (request.term < this.persistentState.currentTerm) {
-            return false;
-        }
-
-        // AppendEntries request is valid
-
-        // If we were a leader, we should have downgraded to follower
-        // prior to processing a valid AppendEntries request.
-        assert(this.role != Role.LEADER);
-
-        // As a candidate or follower, transition to follower to reset
-        // the election timer.
-        transitionRole(Role.FOLLOWER);
-        this.leaderId = request.serverId;
-
-        if (request.prevLogIndex == -1) {
+    private synchronized boolean checkCanAppend(int senderPrevLogIndex, int senderPrevLogTerm) {
+        if (senderPrevLogIndex == -1) {
             // Here, the sender is trying to get us to append zero or more
             // entries starting at index zero
             return true;
         }
 
-        if (!logEntryHasIndex(request.prevLogIndex)) {
+        if (!logEntryHasIndex(senderPrevLogIndex)) {
             return false;
         }
 
-        if (this.persistentState.log.get(request.prevLogIndex).term
-                != request.prevLogTerm) {
-            return false;
-        }
-
-        return true;
+        return this.persistentState.log.get(senderPrevLogIndex).term
+                == senderPrevLogTerm;
     }
 
     /**
@@ -468,8 +462,8 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param role new role that the server instance transitions to. 
      */
     private synchronized void transitionRole(Role role) {
-        // The defined transitions above allow us to put all the timer logic
-        // and accesses in a single place/method (this method).
+        // The defined transitions above allow us to put/contain all the Raft
+        // timer logic and accesses in this method.
 
         if (this.role != role) {
             logMessage("updating role to " + role);

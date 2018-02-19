@@ -21,6 +21,10 @@ public class LogEntry implements Serializable {
         this.command = command;
     }
     
+    public LogEntry(String stringifiedLogEntry) {
+        
+    }
+    
     @Override
     public String toString() {
         return "LogEntry [index=" + index + ", term=" + term + ", command="
