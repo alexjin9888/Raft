@@ -253,7 +253,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
         } else {
             InetSocketAddress leaderAddress =
                     peerMetadataMap.get(leaderId).address;
-            ClientReply reply = new ClientReply(leaderAddress, false, null);
+            ClientReply reply = new ClientReply(request.commandId, leaderAddress, false, null);
             logMessage("Sending " + reply);
             networkManager.sendSerializable(request.clientAddress, reply);
         }
@@ -586,7 +586,8 @@ public class RaftServer implements NetworkManager.SerializableHandler {
                     if (clientRequest == null) {
                         return;
                     }
-                    ClientReply reply =new ClientReply(myAddress, true, result);
+                    ClientReply reply =
+                            new ClientReply(clientRequest.commandId, myAddress, true, result);
                                         
                     networkManager.sendSerializable(clientRequest.clientAddress, reply);
                     this.outstandingClientRequestsMap.remove(logEntry);

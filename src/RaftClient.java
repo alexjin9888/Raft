@@ -48,6 +48,11 @@ public class RaftClient implements NetworkManager.SerializableHandler {
      * The current request for which we have not yet received a successful reply
      */
     private ClientRequest outstandingRequest;
+    
+    /**
+     * Number of commands read from the command line.
+     */
+    private int numCommandsRead;
         
     /**
      * Scanner for receiving command line input from the user.
@@ -63,6 +68,7 @@ public class RaftClient implements NetworkManager.SerializableHandler {
 
             commandReader = new Scanner(System.in);
             outstandingRequest = null;
+            numCommandsRead = 0;
             myTimer = new Timer();
 
             networkManager = new NetworkManager(this.myAddress, this);
@@ -78,6 +84,12 @@ public class RaftClient implements NetworkManager.SerializableHandler {
         }
         
         ClientReply reply = (ClientReply) object;
+        
+        if (outstandingRequest == null || outstandingRequest.commandId != reply.commandId) {
+            // The reply that was sent is no longer relevant to us.
+            return;
+        }
+        
         if (!reply.success) {
             if (reply.leaderAddress == null) {
                 return;
@@ -87,6 +99,7 @@ public class RaftClient implements NetworkManager.SerializableHandler {
             return;
         }
         
+        System.out.println("command id: " + reply.commandId);
         System.out.println(reply.result);
         outstandingRequest = null;
         myTimerTask.cancel();
@@ -107,7 +120,6 @@ public class RaftClient implements NetworkManager.SerializableHandler {
                         if (this.isCancelled) {
                             return;
                         }
-
                         randomizeLeaderAddress();
                         networkManager.sendSerializable(leaderAddress, outstandingRequest);
                     }
@@ -125,7 +137,8 @@ public class RaftClient implements NetworkManager.SerializableHandler {
     private synchronized void waitForAndProcessInput() {
         System.out.println("Please enter a bash command:");
         String command = commandReader.nextLine();
-        outstandingRequest = new ClientRequest(myAddress, command);
+        numCommandsRead += 1;
+        outstandingRequest = new ClientRequest(numCommandsRead, myAddress, command);
         sendRetryingRequest(leaderAddress, outstandingRequest);
   }
     

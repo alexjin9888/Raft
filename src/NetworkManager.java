@@ -77,7 +77,8 @@ public class NetworkManager {
         }
         
         threadPoolService = Executors.newCachedThreadPool();
-        threadPoolService.submit(() -> {
+
+        (new Thread(() -> {
             while(true) {
                 try {
                     Socket socket = myListenerSocket.accept();
@@ -112,8 +113,8 @@ public class NetworkManager {
                     // TODO: handle this properly
                     System.exit(1);
                 }
-            } 
-        });
+            }
+        })).start();
     }
     
     public synchronized void sendSerializable(InetSocketAddress recipientAddress, Serializable object) {

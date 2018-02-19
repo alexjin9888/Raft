@@ -12,6 +12,11 @@ public class ClientRequest implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
+     * Id that the client uses to differentiate between different commands
+     */
+    public int commandId;
+    
+    /**
      * Address of the client that sent this message
      */
     public InetSocketAddress clientAddress;
@@ -24,14 +29,16 @@ public class ClientRequest implements Serializable {
      * @param clientAddress see top of class file
      * @param command see top of class file
      */
-    public ClientRequest(InetSocketAddress clientAddress, String command) {
+    public ClientRequest(int commandId, InetSocketAddress clientAddress, String command) {
+        this.commandId = commandId;
         this.clientAddress = clientAddress;
         this.command = command;
     }
 
     @Override
     public String toString() {
-        return "ClientRequest [clientAddress=" + clientAddress + ", command="
-                + command + "]";
+        return "ClientRequest [commandId=" + commandId + ", clientAddress="
+                + clientAddress + ", command=" + command + "]";
     }
+
 }

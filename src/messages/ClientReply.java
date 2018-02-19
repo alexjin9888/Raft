@@ -12,6 +12,10 @@ public class ClientReply implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
+     * Id that the client uses to differentiate between different commands
+     */
+    public int commandId;
+    /**
      * Address of the current leader in the Raft cluster
      */
     public InetSocketAddress leaderAddress;
@@ -30,15 +34,19 @@ public class ClientReply implements Serializable {
      * @param success see top of class file
      * @param result see top of class file
      */
-    public ClientReply(InetSocketAddress leaderAddress, boolean success,
+    public ClientReply(int commandId, InetSocketAddress leaderAddress, boolean success,
             String result) {
+        this.commandId = commandId;
         this.leaderAddress = leaderAddress;
         this.success = success;
         this.result = result;
     }
+
     @Override
     public String toString() {
-        return "ClientReply [leaderAddress=" + leaderAddress + ", success="
-                + success + ", result=" + result + "]";
+        return "ClientReply [commandId=" + commandId + ", leaderAddress="
+                + leaderAddress + ", success=" + success + ", result=" + result
+                + "]";
     }
+
 }
