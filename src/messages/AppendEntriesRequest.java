@@ -17,7 +17,7 @@ public class AppendEntriesRequest extends RaftMessage {
     public int prevLogIndex;
     // term of prevLogIndex entry
     public int prevLogTerm;
-    // log entries for the receiver to append (zero or more)
+    // log entries for the recipient to append (zero or more)
     public ArrayList<LogEntry> entries;
     // leader's commitIndex
     public int leaderCommit;

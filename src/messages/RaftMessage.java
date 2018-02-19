@@ -17,8 +17,8 @@ public abstract class RaftMessage implements Serializable {
     
     
     /**
-     * @param serverId see above
-     * @param term     see above
+     * @param serverId see top of class file
+     * @param term     see top of class file
      */
     public RaftMessage(String serverId, int term) {
         this.serverId = serverId;

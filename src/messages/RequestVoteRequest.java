@@ -14,10 +14,10 @@ public class RequestVoteRequest extends RaftMessage {
     public int lastLogTerm;
 
     /**
-     * @param serverId     See RaftMessage.java
-     * @param term         See RaftMessage.java
-     * @param lastLogIndex see above
-     * @param lastLogTerm  see above
+     * @param serverId     see RaftMessage.java
+     * @param term         see RaftMessage.java
+     * @param lastLogIndex see top of class file
+     * @param lastLogTerm  see top of class file
      */
     public RequestVoteRequest(String serverId, int term, int lastLogIndex,
         int lastLogTerm) {

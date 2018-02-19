@@ -17,9 +17,6 @@ public class RaftClient implements NetworkManager.SerializableHandler {
      */
     private static final int RETRY_TIMEOUT_MS = 5000;
     
-    // TODO: figure out which instance variables could be moved to the
-    // constructor instead.
-    
     /**
      * The address that I use to receive replies.
      */
@@ -38,9 +35,9 @@ public class RaftClient implements NetworkManager.SerializableHandler {
     /**
      * Timer used to facilitate the retrying of requests.
      */
-    private Timer myTimer;
+    private Timer retryRequestTimer;
 
-    private CheckingCancelTimerTask myTimerTask;
+    private CheckingCancelTimerTask retryRequestTask;
         
     private NetworkManager networkManager;
     
@@ -63,13 +60,11 @@ public class RaftClient implements NetworkManager.SerializableHandler {
         synchronized(RaftClient.this) {
             this.myAddress = myAddress;
             this.serverAddresses = serverAddresses;
-                    
-            randomizeLeaderAddress();
 
             commandReader = new Scanner(System.in);
             outstandingRequest = null;
             numCommandsRead = 0;
-            myTimer = new Timer();
+            retryRequestTimer = new Timer();
 
             networkManager = new NetworkManager(this.myAddress, this);
             
@@ -91,62 +86,68 @@ public class RaftClient implements NetworkManager.SerializableHandler {
         }
         
         if (!reply.success) {
-            if (reply.leaderAddress == null) {
-                return;
-            }
             leaderAddress = reply.leaderAddress;
-            sendRetryingRequest(leaderAddress, outstandingRequest);
+            assert(outstandingRequest != null);
+            sendRetryingRequest();
             return;
         }
         
         System.out.println("command id: " + reply.commandId);
         System.out.println(reply.result);
         outstandingRequest = null;
-        myTimerTask.cancel();
+        retryRequestTask.cancel();
         waitForAndProcessInput();
     }
     
-    private synchronized void sendRetryingRequest(InetSocketAddress address, ClientRequest request) {
-        networkManager.sendSerializable(address, request);
+    /**
+     * Sends the outstanding request containing the command to-be-executed and
+     * periodically retries the request in the event that we don't receive a
+     * reply.
+     * Precondition: The client's outstanding request is not null. 
+     */
+    private synchronized void sendRetryingRequest() {
+        if (leaderAddress == null) {
+            leaderAddress = serverAddresses.get(ThreadLocalRandom.current().nextInt(
+                    serverAddresses.size()));
+        }
         
-        if (myTimerTask != null) {
-            myTimerTask.cancel();
+        networkManager.sendSerializable(leaderAddress, outstandingRequest);
+        
+        if (retryRequestTask != null) {
+            retryRequestTask.cancel();
         }
         
         // Create a timer task to periodically retry the request.
-        myTimerTask = new CheckingCancelTimerTask() {
+        retryRequestTask = new CheckingCancelTimerTask() {
                 public void run() {
                     synchronized(RaftClient.this) {
                         if (this.isCancelled) {
                             return;
                         }
-                        randomizeLeaderAddress();
+                        leaderAddress = serverAddresses.get(ThreadLocalRandom.current().nextInt(
+                                serverAddresses.size()));
+                        assert(outstandingRequest != null);
                         networkManager.sendSerializable(leaderAddress, outstandingRequest);
                     }
                 }
         };
         
-        myTimer.scheduleAtFixedRate(myTimerTask, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
+        retryRequestTimer.scheduleAtFixedRate(retryRequestTask, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
     }
-    
-    private synchronized void randomizeLeaderAddress() {
-        leaderAddress = serverAddresses.get(ThreadLocalRandom.current().nextInt(
-                serverAddresses.size()));
-    }
-    
+ 
     private synchronized void waitForAndProcessInput() {
         System.out.println("Please enter a bash command:");
         String command = commandReader.nextLine();
         numCommandsRead += 1;
         outstandingRequest = new ClientRequest(numCommandsRead, myAddress, command);
-        sendRetryingRequest(leaderAddress, outstandingRequest);
+        sendRetryingRequest();
   }
     
     public static void main(String[] args) {
-        // TODO: do argument parsing here to get the list of server addresses
-        // TODO: ensure that list of server addresses passed in is non-empty
+        // A2DO: do argument parsing here to get the list of server addresses
+        // A2DO: ensure that list of server addresses passed in is non-empty
         
-        // TODO: get rid of all of this hardcoding
+        // A2DO: get rid of the hardcoding below
         ArrayList<InetSocketAddress> serverAddresses = new ArrayList<InetSocketAddress>();
         
         for (int i = 0; i < 3; i++) {

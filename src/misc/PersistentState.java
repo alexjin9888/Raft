@@ -52,7 +52,7 @@ public class PersistentState implements Serializable {
         this.lastApplied = -1;
         this.log = new ArrayList<LogEntry>();
         
-        // TODO: load list of log entries from disk using the second LogEntry
+        // A2DO: load list of log entries from disk using the second LogEntry
         // constructor. See LogEntry.java for details.
     }
 
@@ -81,7 +81,7 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void truncateAt(int index) {
-        // TODO: if we truncate at an index that is NOT a valid idx, don't do
+        // A2DO: if we truncate at an index that is NOT a valid idx, don't do
         // anything (e.g., don't do any disk I/O) and return.
         
         this.log.subList(index, this.log.size()).clear();
@@ -94,7 +94,7 @@ public class PersistentState implements Serializable {
      * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {
-        // TODO: make sure that this function handles things efficiently in the
+        // A2DO: make sure that this function handles things efficiently in the
         // case that the caller passes in an empty list.
 
         this.log.addAll(newEntries);

@@ -15,8 +15,6 @@ public abstract class ObjectUtils {
         return ObjectUtils.deserialize(ObjectUtils.serialize(obj));
     }
 
-    // TODO: make serialize/deserialize private after we come up with
-    // a new data format that is human-readable for persistent state storage.
     /**
      * Serializes an serializable object into a sequence of bytes.
      * @param object       object to be serialized
@@ -50,12 +48,12 @@ public abstract class ObjectUtils {
                  ObjectInputStream ois = new ObjectInputStream(bais)) {
             object = ois.readObject();
         } catch (ClassNotFoundException e) {
-            // TODO: figure out proper error-handling for this
+            // ERROR2DO: figure out proper error-handling for this
             // also log something that is informative
             object = null;
             e.printStackTrace();
         } catch (IOException e) {
-            // TODO see todo above
+            // ERROR2DO: see above
             object = null;
         }
         

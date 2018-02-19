@@ -34,7 +34,7 @@ import units.LogEntry;
 /**
  * Each server in the Raft cluster should create and maintain its own
  * Server instance. Each instance runs the Raft protocol.
- * TODO: reword comment so that it better describes what this class represents.
+ * COMMENT2DO: reword comment so that it better describes what this class represents.
  * Make the comment more direct.
  */
 public class RaftServer implements NetworkManager.SerializableHandler {
@@ -49,7 +49,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      */
     private static final int HEARTBEAT_TIMEOUT_MS = 1000;
 
-    // TODO differentiate min and max
+    // COMMENT2DO differentiate min and max
     /**
      * The election timeout is a random variable with the distribution
      * discrete Uniform(min. election timeout, max election timeout).
@@ -105,9 +105,9 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      */
     private PersistentState persistentState;
 
-    private Timer myTimer;
+    private Timer timeoutTimer;
 
-    private CheckingCancelTimerTask myTimerTask;
+    private CheckingCancelTimerTask timeoutTask;
 
     private static enum Role {
         FOLLOWER,
@@ -155,12 +155,11 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      */
     public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
         synchronized(RaftServer.this) {
-            // As part of initialization, spins up two threads to help this inst.
-            // carry out the Raft protocol. One thread is a timer thread (see
-            // myTimer initialization) and another thread is a Serializable receiver
-            // thread (see serializableReceiver initialization). 
-            // The thread that runs this constructor will exit after starting up
-            // the receiver thread.
+            // As part of initialization, spins up two threads to help this
+            // server carry out the Raft protocol. One thread is a timer thread
+            // (see Timer initialization below) and another thread is a network
+            // manager thread (see NetworkManager initialization). We also
+            // make use of a thread pool for applying log commands.
 
             this.myId = myId;
             leaderId = null;
@@ -189,16 +188,14 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             this.commandApplierService = Executors.newSingleThreadExecutor();
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
 
-            // Spins up a thread that allows us to schedule periodic tasks
-            myTimer = new Timer();
+            // Spins up a thread that allows us to schedule timeout tasks
+            timeoutTimer = new Timer();
 
-            // TODO: mention that this may also depend on serializable sender
-            // being initialized. look into this
-            // Assumes that persistent state and timer have been initialized before
-            // we transition to follower and perform initial follower behavior.
             this.role = null;
             transitionRole(Role.FOLLOWER);
 
+            // Spins up a thread that will allow us to receive and handle
+            // incoming messages.
             networkManager = new NetworkManager(myAddress, this);
             logMessage("successfully booted");
         }
@@ -251,8 +248,9 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             this.persistentState.appendLogEntries(logEntries);
             outstandingClientRequestsMap.put(logEntry, request);
         } else {
-            InetSocketAddress leaderAddress =
-                    peerMetadataMap.get(leaderId).address;
+            InetSocketAddress leaderAddress = leaderId != null
+                    ? peerMetadataMap.get(leaderId).address
+                    : null;
             ClientReply reply = new ClientReply(request.commandId, leaderAddress, false, null);
             logMessage("Sending " + reply);
             networkManager.sendSerializable(request.clientAddress, reply);
@@ -299,7 +297,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
                 request.serverId).address, reply);
     }
 
-    // TODO implement this
+    // A2DO implement this
     private String execute(String command) {
         return command;
     }
@@ -450,6 +448,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      * * Follower -> Follower :: resets the election timeout.
      * * Candidate -> Candidate :: starts a new election.
      * 
+     * Precondition: timeoutTask timer and persistentState state have been init.
      * @param role new role that the server instance transitions to. 
      */
     private synchronized void transitionRole(Role role) {
@@ -461,15 +460,15 @@ public class RaftServer implements NetworkManager.SerializableHandler {
         }
         this.role = role;
 
-        if (myTimerTask != null) {
-            myTimerTask.cancel();
+        if (timeoutTask != null) {
+            timeoutTask.cancel();
         }
 
         // This restarts (or starts) the election timer when run.
         Runnable restartElectionTimer = () -> {
 
             // Create a timer task to start a new election.
-            myTimerTask = new CheckingCancelTimerTask() {
+            timeoutTask = new CheckingCancelTimerTask() {
                 public void run() {
                     synchronized(RaftServer.this) {
                         // Any role transition that happens prior to the
@@ -483,7 +482,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
                 }
             };
 
-            myTimer.schedule(myTimerTask, ThreadLocalRandom.current().nextInt(
+            timeoutTimer.schedule(timeoutTask, ThreadLocalRandom.current().nextInt(
                     MIN_ELECTION_TIMEOUT_MS, MAX_ELECTION_TIMEOUT_MS + 1));
         };
 
@@ -522,7 +521,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             this.outstandingClientRequestsMap.clear();
 
             // Create a timer task to send heartbeats.
-            myTimerTask = new CheckingCancelTimerTask() {
+            timeoutTask = new CheckingCancelTimerTask() {
                 public void run() {
                     synchronized(RaftServer.this) {
                         // Any role transition that happens prior to the
@@ -559,7 +558,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
                 }
             };
 
-            myTimer.scheduleAtFixedRate(myTimerTask, 0, HEARTBEAT_TIMEOUT_MS);
+            timeoutTimer.scheduleAtFixedRate(timeoutTask, 0, HEARTBEAT_TIMEOUT_MS);
             break;
         }
     }
@@ -624,7 +623,8 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      *               which the server will start a listener channel on
      */
     public static void main(String[] args) {
-        // TODO: ensure that list of server addresses passed in is non-empty
+        // A2DO: ensure that list of server addresses passed in is non-empty
+        //       not sure if we have to implement any extra checks to achieve this
 
         int myPortIndex = -1;
         String[] allPortStrings = null;

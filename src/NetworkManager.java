@@ -43,14 +43,14 @@ public class NetworkManager {
         public void handleSerializable(Serializable object);
     }
     
-    private ServerSocket myListenerSocket;
+    private ServerSocket listenerSocket;
     
     // Shared attributes and resources
     /**
      * Thread pool that we can use to send and receive messages on different
      * threads.
      */
-    private ExecutorService threadPoolService;
+    private ExecutorService networkIOService;
     
     /**
      * Tracing and debugging logger;
@@ -64,8 +64,8 @@ public class NetworkManager {
         removeWriteSocketTimer = new Timer();
         
         try {
-            myListenerSocket = new ServerSocket();
-            myListenerSocket.bind(myAddress);
+            listenerSocket = new ServerSocket();
+            listenerSocket.bind(myAddress);
         } catch (IOException e) {
             // Throw exceptions that are a subclass of IOException
             // and/or RuntimeException.
@@ -76,13 +76,13 @@ public class NetworkManager {
             System.exit(1);
         }
         
-        threadPoolService = Executors.newCachedThreadPool();
+        networkIOService = Executors.newCachedThreadPool();
 
         (new Thread(() -> {
             while(true) {
                 try {
-                    Socket socket = myListenerSocket.accept();
-                    threadPoolService.submit(() -> {
+                    Socket socket = listenerSocket.accept();
+                    networkIOService.submit(() -> {
                         // Uses one object input stream for the lifetime of
                         // the socket, which is generally the convention.
                         try (Socket readSocket = socket;
@@ -99,18 +99,18 @@ public class NetworkManager {
                             // Sender stopped talking to us so we close
                             // socket resources and continue.
                         } catch (IOException e) {
-                            // TODO: think about whether or not to print
+                            // ERROR2DO: think about whether or not to print
                             // any further messages here.
                             myLogger.info(myAddress + " received the following I/O error message while trying to read: " + e.getMessage());
                             // e.printStackTrace();
                         } catch (ClassNotFoundException e) {
-                            // TODO: figure out what to print in the case of
+                            // ERROR2DO: figure out what to print in the case of
                             // error being of type ClassNotFoundException.
                         }
                     });
                 } catch (IOException e) {
                     // error during accept call (blocking call)
-                    // TODO: handle this properly
+                    // ERROR2DO: handle this properly
                     System.exit(1);
                 }
             }
@@ -143,7 +143,7 @@ public class NetworkManager {
             }
         }
         final WriteSocketInfo writeSocketInfo = socketInfo; 
-        threadPoolService.submit(() -> {
+        networkIOService.submit(() -> {
             try {
                 writeSocketInfo.oos.writeObject(objectCopy);
                 rescheduleRemoveWriteSocket(writeSocketInfo);
@@ -156,25 +156,25 @@ public class NetworkManager {
     
     /**
      * Reschedules (or schedules) the remove socket task. 
-     * TODO: finish writing comments for this method.
-     * @param socketInfo
+     * COMMENT2DO: finish writing comments for this method.
+     * @param writeSocketInfo
      */
-    private synchronized void rescheduleRemoveWriteSocket(WriteSocketInfo socketInfo) {
-        if (socketInfo.removeSocketTask != null) {
-            socketInfo.removeSocketTask.cancel();
+    private synchronized void rescheduleRemoveWriteSocket(WriteSocketInfo writeSocketInfo) {
+        if (writeSocketInfo.removeSocketTask != null) {
+            writeSocketInfo.removeSocketTask.cancel();
         }
         
-        socketInfo.removeSocketTask = new CheckingCancelTimerTask() {
+        writeSocketInfo.removeSocketTask = new CheckingCancelTimerTask() {
             public void run() {
                 synchronized(NetworkManager.this) {
                     if (this.isCancelled) {
                         return;
                     }
-                    removeWriteSocket(socketInfo.address);
+                    removeWriteSocket(writeSocketInfo.address);
                 }
             }
         };
-        removeWriteSocketTimer.schedule(socketInfo.removeSocketTask, READ_WRITE_TIMEOUT_MS);
+        removeWriteSocketTimer.schedule(writeSocketInfo.removeSocketTask, READ_WRITE_TIMEOUT_MS);
     }
     
     private synchronized void removeWriteSocket(InetSocketAddress address) {

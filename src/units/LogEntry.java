@@ -11,9 +11,9 @@ public class LogEntry implements Serializable {
     public String command; // To be executed on each server
 
     /**
-     * @param index   see above
-     * @param command see above
-     * @param term    see above
+     * @param index   see top of class file
+     * @param command see top of class file
+     * @param term    see top of class file
      */
     public LogEntry(int index, int term, String command) {
         this.index = index;
