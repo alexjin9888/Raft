@@ -10,7 +10,7 @@ import messages.ClientReply;
 import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
 
-public class RaftClient implements SerializableReceiver.Handler {
+public class RaftClient implements NetworkManager.SerializableHandler {
     
     /**
      * Amount of time to wait for a reply before we send another request.
@@ -42,7 +42,7 @@ public class RaftClient implements SerializableReceiver.Handler {
 
     private CheckingCancelTimerTask myTimerTask;
         
-    private SerializableSender serializableSender;
+    private NetworkManager networkManager;
     
     /**
      * The current request for which we have not yet received a successful reply
@@ -65,9 +65,7 @@ public class RaftClient implements SerializableReceiver.Handler {
             outstandingRequest = null;
             myTimer = new Timer();
 
-            serializableSender = new SerializableSender();
-            SerializableReceiver serializableReceiver =
-                    new SerializableReceiver(this.myAddress, this);
+            networkManager = new NetworkManager(this.myAddress, this);
             
             waitForAndProcessInput();
         }
@@ -96,7 +94,7 @@ public class RaftClient implements SerializableReceiver.Handler {
     }
     
     private synchronized void sendRetryingRequest(InetSocketAddress address, ClientRequest request) {
-        serializableSender.send(address, request);
+        networkManager.sendSerializable(address, request);
         
         if (myTimerTask != null) {
             myTimerTask.cancel();
@@ -111,7 +109,7 @@ public class RaftClient implements SerializableReceiver.Handler {
                         }
 
                         randomizeLeaderAddress();
-                        serializableSender.send(leaderAddress, outstandingRequest);
+                        networkManager.sendSerializable(leaderAddress, outstandingRequest);
                     }
                 }
         };

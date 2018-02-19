@@ -37,7 +37,7 @@ import units.LogEntry;
  * TODO: reword comment so that it better describes what this class represents.
  * Make the comment more direct.
  */
-public class RaftServer implements SerializableReceiver.Handler {
+public class RaftServer implements NetworkManager.SerializableHandler {
     // To ensure that at most one thread accesses server state at any given
     // time, all instance methods within this class are synchronized.
     // Furthermore, if any code in this file accesses server state in a new
@@ -129,7 +129,7 @@ public class RaftServer implements SerializableReceiver.Handler {
     private Set<String> votedForMeSet;
 
 
-    private SerializableSender serializableSender;
+    private NetworkManager networkManager;
 
     /**
      * Single thread manager that will execute the commands for us in order.
@@ -185,9 +185,7 @@ public class RaftServer implements SerializableReceiver.Handler {
             // quickly update our commit index as necessary after talking with
             // peers.
             commitIndex = this.persistentState.lastApplied;
-
-            serializableSender = new SerializableSender();
-            
+       
             this.commandApplierService = Executors.newSingleThreadExecutor();
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
 
@@ -201,14 +199,7 @@ public class RaftServer implements SerializableReceiver.Handler {
             this.role = null;
             transitionRole(Role.FOLLOWER);
 
-            // Spins up a receiver thread that manages a server socket that listens
-            // for incoming messages. The thread handles them by calling
-            // handleSerializable in this class.
-            // TODO: update the comment above. it's not entirely accurate
-            // TODO: add a note about why we don't use serializableReceiver var.
-            SerializableReceiver serializableReceiver =
-                    new SerializableReceiver(myAddress, this);
-
+            networkManager = new NetworkManager(myAddress, this);
             logMessage("successfully booted");
         }
     }
@@ -264,7 +255,7 @@ public class RaftServer implements SerializableReceiver.Handler {
                     peerMetadataMap.get(leaderId).address;
             ClientReply reply = new ClientReply(leaderAddress, false, null);
             logMessage("Sending " + reply);
-            serializableSender.send(request.clientAddress, reply);
+            networkManager.sendSerializable(request.clientAddress, reply);
         }
     }
 
@@ -304,7 +295,7 @@ public class RaftServer implements SerializableReceiver.Handler {
 
         AppendEntriesReply reply = new AppendEntriesReply(myId,
                 this.persistentState.currentTerm, successfulAppend, nextIndex);
-        serializableSender.send(peerMetadataMap.get(
+        networkManager.sendSerializable(peerMetadataMap.get(
                 request.serverId).address, reply);
     }
 
@@ -352,7 +343,7 @@ public class RaftServer implements SerializableReceiver.Handler {
 
         RequestVoteReply reply = new RequestVoteReply(myId, 
                 this.persistentState.currentTerm, grantVote);
-        serializableSender.send(peerMetadataMap.get(request.serverId).address, reply);
+        networkManager.sendSerializable(peerMetadataMap.get(request.serverId).address, reply);
     }
 
     /**
@@ -515,7 +506,7 @@ public class RaftServer implements SerializableReceiver.Handler {
                             persistentState.currentTerm, lastLogIndex, lastLogTerm);
 
                     for (ServerMetadata meta : peerMetadataMap.values()) {
-                        serializableSender.send(meta.address, request);
+                        networkManager.sendSerializable(meta.address, request);
                     }
                     restartElectionTimer.run();
                     break;
@@ -562,7 +553,7 @@ public class RaftServer implements SerializableReceiver.Handler {
                                             new AppendEntriesRequest(myId, 
                                                     persistentState.currentTerm, prevLogIndex,
                                                     prevLogTerm, logEntries, commitIndex);
-                                    serializableSender.send(meta.address, request);
+                                    networkManager.sendSerializable(meta.address, request);
                         }
                     }
                 }
@@ -597,7 +588,7 @@ public class RaftServer implements SerializableReceiver.Handler {
                     }
                     ClientReply reply =new ClientReply(myAddress, true, result);
                                         
-                    serializableSender.send(clientRequest.clientAddress, reply);
+                    networkManager.sendSerializable(clientRequest.clientAddress, reply);
                     this.outstandingClientRequestsMap.remove(logEntry);
                 }
             });
