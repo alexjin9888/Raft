@@ -28,7 +28,8 @@ import messages.RequestVoteRequest;
 import misc.PersistentState;
 import misc.PersistentStateException;
 import misc.CheckingCancelTimerTask;
-import units.LogEntry;
+import misc.LogEntry;
+import misc.NetworkManager;
 
 
 /**
@@ -134,7 +135,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
     /**
      * Single thread manager that will execute the commands for us in order.
      */
-    private ExecutorService commandApplierService;
+    private ExecutorService inOrderCommandApplier;
     /**
      * Map that we can query to see whether we need to reply to a particular
      * client after applying the command of a log entry.
@@ -185,7 +186,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             // peers.
             commitIndex = this.persistentState.lastApplied;
        
-            this.commandApplierService = Executors.newSingleThreadExecutor();
+            this.inOrderCommandApplier = Executors.newSingleThreadExecutor();
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
 
             // Spins up a thread that allows us to schedule timeout tasks
@@ -573,7 +574,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
         }
         for (int i=commitIndex+1; i <= newCommitIndex; i++) {
             LogEntry logEntry = this.persistentState.log.get(i);
-            commandApplierService.submit(() -> {
+            inOrderCommandApplier.submit(() -> {
                 String result = execute(logEntry.command);
                 synchronized(RaftServer.this) {                    
                     this.persistentState.incrementLastApplied();

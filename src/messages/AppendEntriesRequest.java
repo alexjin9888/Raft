@@ -2,7 +2,7 @@ package messages;
 
 import java.util.ArrayList;
 
-import units.LogEntry;
+import misc.LogEntry;
 
 /**
  * This class defines the message format of an AppendEntries request.

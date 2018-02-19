@@ -7,9 +7,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import units.LogEntry;
-import utils.ObjectUtils;
-
 /**
  * Manages the persistent state of a Raft server.
  */

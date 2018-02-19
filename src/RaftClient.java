@@ -9,6 +9,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import messages.ClientReply;
 import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
+import misc.NetworkManager;
 
 public class RaftClient implements NetworkManager.SerializableHandler {
     
@@ -91,8 +92,6 @@ public class RaftClient implements NetworkManager.SerializableHandler {
             sendRetryingRequest();
             return;
         }
-        
-        System.out.println("command id: " + reply.commandId);
         System.out.println(reply.result);
         outstandingRequest = null;
         retryRequestTask.cancel();
@@ -146,14 +145,15 @@ public class RaftClient implements NetworkManager.SerializableHandler {
     public static void main(String[] args) {
         // A2DO: do argument parsing here to get the list of server addresses
         // A2DO: ensure that list of server addresses passed in is non-empty
+        // A2DO: start up a single client using the passed-in arguments
         
-        // A2DO: get rid of the hardcoding below
+        // A2DO: remove this hardcoding
         ArrayList<InetSocketAddress> serverAddresses = new ArrayList<InetSocketAddress>();
         
         for (int i = 0; i < 3; i++) {
-            serverAddresses.add(new InetSocketAddress("localhost", 6060 + i));
+            serverAddresses.add(new InetSocketAddress("localhost", 6060 + i));            
         }
         
-        RaftClient myClient = new RaftClient(new InetSocketAddress("localhost", 6070), serverAddresses);
+        RaftClient client = new RaftClient(new InetSocketAddress("localhost", 6070), serverAddresses);
     }
 }
