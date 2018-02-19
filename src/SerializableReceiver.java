@@ -1,3 +1,4 @@
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -70,7 +71,7 @@ public class SerializableReceiver {
                                     // We block until a serializable object is read or an I/O error occurs.
                                     serializableHandler.handleSerializable((Serializable) ois.readObject());
                                 }
-                            } catch (SocketTimeoutException e) {
+                            } catch (SocketTimeoutException|EOFException e) {
                                 // Sender stopped talking to us so we close
                                 // socket resources and continue.
                             } catch (IOException e) {

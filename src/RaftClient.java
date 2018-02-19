@@ -8,6 +8,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import messages.ClientReply;
 import messages.ClientRequest;
+import misc.CheckingCancelTimerTask;
 
 public class RaftClient implements SerializableReceiver.Handler {
     
@@ -39,11 +40,7 @@ public class RaftClient implements SerializableReceiver.Handler {
      */
     private Timer myTimer;
 
-    class TimerTaskInfo {
-        TimerTask task;
-        boolean taskCancelled;
-    }
-    private TimerTaskInfo myTimerTaskInfo;
+    private CheckingCancelTimerTask myTimerTask;
         
     private SerializableSender serializableSender;
     
@@ -94,24 +91,22 @@ public class RaftClient implements SerializableReceiver.Handler {
         
         System.out.println(reply.result);
         outstandingRequest = null;
-        myTimerTaskInfo.task.cancel();
-        myTimerTaskInfo.taskCancelled = true;
+        myTimerTask.cancel();
         waitForAndProcessInput();
     }
     
     private synchronized void sendRetryingRequest(InetSocketAddress address, ClientRequest request) {
         serializableSender.send(address, request);
         
-        if (myTimerTaskInfo != null) {
-            myTimerTaskInfo.task.cancel();
-            myTimerTaskInfo.taskCancelled = true;
+        if (myTimerTask != null) {
+            myTimerTask.cancel();
         }
         
-        TimerTaskInfo retryTimerTaskInfo = new TimerTaskInfo(); 
-        retryTimerTaskInfo.task = new TimerTask() {
+        // Create a timer task to periodically retry the request.
+        myTimerTask = new CheckingCancelTimerTask() {
                 public void run() {
                     synchronized(RaftClient.this) {
-                        if (retryTimerTaskInfo.taskCancelled) {
+                        if (this.isCancelled) {
                             return;
                         }
 
@@ -120,10 +115,8 @@ public class RaftClient implements SerializableReceiver.Handler {
                     }
                 }
         };
-        retryTimerTaskInfo.taskCancelled = false;
         
-        myTimerTaskInfo = retryTimerTaskInfo;
-        myTimer.scheduleAtFixedRate(myTimerTaskInfo.task, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
+        myTimer.scheduleAtFixedRate(myTimerTask, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
     }
     
     private synchronized void randomizeLeaderAddress() {

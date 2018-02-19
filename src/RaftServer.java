@@ -27,6 +27,7 @@ import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
 import misc.PersistentState;
 import misc.PersistentStateException;
+import misc.CheckingCancelTimerTask;
 import units.LogEntry;
 
 
@@ -106,11 +107,7 @@ public class RaftServer implements SerializableReceiver.Handler {
 
     private Timer myTimer;
 
-    class TimerTaskInfo {
-        TimerTask task;
-        boolean taskCancelled;
-    }
-    private TimerTaskInfo myTimerTaskInfo;
+    private CheckingCancelTimerTask myTimerTask;
 
     private static enum Role {
         FOLLOWER,
@@ -222,6 +219,7 @@ public class RaftServer implements SerializableReceiver.Handler {
      * @param object incoming message
      */
     public synchronized void handleSerializable(Serializable object) {
+        logMessage("Received " + object);
         if (object instanceof ClientRequest) {
             handleClientRequest((ClientRequest) object);
             return;
@@ -231,7 +229,6 @@ public class RaftServer implements SerializableReceiver.Handler {
             return;
         }
         RaftMessage message = (RaftMessage) object;
-        logMessage("Received " + message);
         if (message.term > this.persistentState.currentTerm) {
             updateTerm(message.term);
             transitionRole(Role.FOLLOWER);
@@ -293,34 +290,6 @@ public class RaftServer implements SerializableReceiver.Handler {
                 this.persistentState.currentTerm, successfulAppend, nextIndex);
         serializableSender.send(peerMetadataMap.get(
                 request.serverId).address, reply);
-    }
-
-    private synchronized void updateCommitIndex(int newCommitIndex) {
-        if (newCommitIndex <= this.commitIndex) {
-            return;
-        }
-        for (int i=commitIndex+1; i <= newCommitIndex; i++) {
-            LogEntry logEntry = this.persistentState.log.get(i);
-            commandApplierService.submit(() -> {
-                String result = execute(logEntry.command);
-                synchronized(RaftServer.this) {                    
-                    this.persistentState.incrementLastApplied();
-                    if (this.role!=Role.LEADER) {
-                        return;
-                    }
-                    ClientRequest clientRequest = 
-                            this.outstandingClientRequestsMap.get(logEntry);
-                    if (clientRequest == null) {
-                        return;
-                    }
-                    ClientReply reply =new ClientReply(myAddress, true, result);
-                                        
-                    serializableSender.send(clientRequest.clientAddress, reply);
-                    this.outstandingClientRequestsMap.remove(logEntry);
-                }
-            });
-        }
-        this.commitIndex = newCommitIndex;
     }
 
     // TODO implement this
@@ -507,33 +476,29 @@ public class RaftServer implements SerializableReceiver.Handler {
         }
         this.role = role;
 
-        if (myTimerTaskInfo != null) {
-            myTimerTaskInfo.task.cancel();
-            myTimerTaskInfo.taskCancelled = true;
+        if (myTimerTask != null) {
+            myTimerTask.cancel();
         }
 
         // This restarts (or starts) the election timer when run.
         Runnable restartElectionTimer = () -> {
 
-            TimerTaskInfo electionTimerTaskInfo = new TimerTaskInfo();
-            // Create a timer task to start a new election
-            electionTimerTaskInfo.task = new TimerTask() {
+            // Create a timer task to start a new election.
+            myTimerTask = new CheckingCancelTimerTask() {
                 public void run() {
                     synchronized(RaftServer.this) {
                         // Any role transition that happens prior to the
                         // RaftServer instance lock being acquired will
                         // invalidate this task.
-                        if (electionTimerTaskInfo.taskCancelled) {
+                        if (this.isCancelled) {
                             return;
                         }
                         transitionRole(Role.CANDIDATE);
                     }
                 }
             };
-            electionTimerTaskInfo.taskCancelled = false;
-            myTimerTaskInfo = electionTimerTaskInfo;
 
-            myTimer.schedule(myTimerTaskInfo.task, ThreadLocalRandom.current().nextInt(
+            myTimer.schedule(myTimerTask, ThreadLocalRandom.current().nextInt(
                     MIN_ELECTION_TIMEOUT_MS, MAX_ELECTION_TIMEOUT_MS + 1));
         };
 
@@ -571,16 +536,14 @@ public class RaftServer implements SerializableReceiver.Handler {
             
             this.outstandingClientRequestsMap.clear();
 
-            TimerTaskInfo heartbeatTimerTaskInfo = new TimerTaskInfo();
-
-            // Create a timer task to send heartbeats
-            heartbeatTimerTaskInfo.task = new TimerTask() {
+            // Create a timer task to send heartbeats.
+            myTimerTask = new CheckingCancelTimerTask() {
                 public void run() {
                     synchronized(RaftServer.this) {
                         // Any role transition that happens prior to the
                         // RaftServer instance lock being acquired will
                         // invalidate this task.
-                        if (heartbeatTimerTaskInfo.taskCancelled) {
+                        if (this.isCancelled) {
                             return;
                         }
 
@@ -610,10 +573,8 @@ public class RaftServer implements SerializableReceiver.Handler {
                     }
                 }
             };
-            heartbeatTimerTaskInfo.taskCancelled = false;
-            myTimerTaskInfo = heartbeatTimerTaskInfo;
 
-            myTimer.scheduleAtFixedRate(myTimerTaskInfo.task, 0, HEARTBEAT_TIMEOUT_MS);
+            myTimer.scheduleAtFixedRate(myTimerTask, 0, HEARTBEAT_TIMEOUT_MS);
             break;
         }
     }
@@ -622,6 +583,34 @@ public class RaftServer implements SerializableReceiver.Handler {
         return index >= 0 && index < this.persistentState.log.size();
     }
 
+    private synchronized void updateCommitIndex(int newCommitIndex) {
+        if (newCommitIndex <= this.commitIndex) {
+            return;
+        }
+        for (int i=commitIndex+1; i <= newCommitIndex; i++) {
+            LogEntry logEntry = this.persistentState.log.get(i);
+            commandApplierService.submit(() -> {
+                String result = execute(logEntry.command);
+                synchronized(RaftServer.this) {                    
+                    this.persistentState.incrementLastApplied();
+                    if (this.role!=Role.LEADER) {
+                        return;
+                    }
+                    ClientRequest clientRequest = 
+                            this.outstandingClientRequestsMap.get(logEntry);
+                    if (clientRequest == null) {
+                        return;
+                    }
+                    ClientReply reply =new ClientReply(myAddress, true, result);
+                                        
+                    serializableSender.send(clientRequest.clientAddress, reply);
+                    this.outstandingClientRequestsMap.remove(logEntry);
+                }
+            });
+        }
+        this.commitIndex = newCommitIndex;
+    }
+    
     /**
      * Wrapper around current term setter that enforces some invariants
      * relating to updating our knowledge of the current term.
