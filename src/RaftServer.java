@@ -63,9 +63,9 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      * The endpoints are inclusive.
      */
     private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
-
+    
     /**
-     * Value used when trying to get the term of a non-existent log entry.
+     * Value used when asked to specify the term of a non-existent log entry.
      */
     private static final int UNDEFINED_LOG_TERM = -1;
 
@@ -214,7 +214,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             return;
         }
         if (!(object instanceof RaftMessage)) {
-            logMessage("Don't know how to process the serializable object: " + object);
+            logMessage("Don't know how to handle the serializable object: " + object);
             return;
         }
         RaftMessage message = (RaftMessage) object;
@@ -222,6 +222,26 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             updateTerm(message.term);
             transitionRole(Role.FOLLOWER);
         }
+        if (message.term < this.persistentState.currentTerm) {
+            // In the case of a stale sender term, if the message is a request,
+            // then we want to send a reply. For all messages, we want to stop
+            // any further processing of the message.
+            if (message instanceof AppendEntriesRequest) {
+                // The `nextIndex` value specified in the reply should not
+                // matter in this case.
+                AppendEntriesReply reply = new AppendEntriesReply(myId,
+                        this.persistentState.currentTerm, false, 0);
+                networkManager.sendSerializable(peerMetadataMap.get(
+                        message.serverId).address, reply);
+            } else if (message instanceof RequestVoteRequest) {
+                RequestVoteReply reply = new RequestVoteReply(myId, 
+                        this.persistentState.currentTerm, false);
+                networkManager.sendSerializable(peerMetadataMap.get(
+                        message.serverId).address, reply);
+            }
+            return;
+        }
+
         if (message instanceof AppendEntriesRequest) {
             handleAppendEntriesRequest((AppendEntriesRequest) message);
         } else if (message instanceof RequestVoteRequest) {
@@ -231,7 +251,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
         } else if (message instanceof RequestVoteReply) {
             handleRequestVoteReply((RequestVoteReply) message);
         } else {
-            logMessage("Don't know how to process the Raft message: " + message);
+            logMessage("Don't know how to handle the Raft message: " + message);
             return;
         }
     }
@@ -259,29 +279,23 @@ public class RaftServer implements NetworkManager.SerializableHandler {
     }
 
     /**
-     * Processes an AppendEntries request from a leader and sends a reply.
+     * Processes a valid AppendEntries request from a leader and sends a reply.
      * @param request data corresponding to AppendEntries request
      */
     private synchronized void handleAppendEntriesRequest(AppendEntriesRequest request) {
-        boolean senderTermStale = request.term < this.persistentState.currentTerm;
-        
-        if (!senderTermStale) {
-            // Here, AppendEntries request is valid
+        // If we were a leader, we should have downgraded to follower
+        // prior to processing a valid AppendEntries request.
+        assert(this.role != Role.LEADER);
 
-            // If we were a leader, we should have downgraded to follower
-            // prior to processing a valid AppendEntries request.
-            assert(this.role != Role.LEADER);
-
-            // As a candidate or follower, transition to follower to reset
-            // the election timer.
-            transitionRole(Role.FOLLOWER);
-            this.leaderId = request.serverId;
-        }
+        // As a candidate or follower, transition to follower to reset
+        // the election timer.
+        transitionRole(Role.FOLLOWER);
+        this.leaderId = request.serverId;
         
         boolean successfulAppend = false;
         int nextIndex;
 
-        if (!senderTermStale && checkCanAppend(request.prevLogIndex, request.prevLogTerm)) {
+        if (canAppend(request.prevLogIndex, request.prevLogTerm)) {
             this.persistentState.truncateAt(request.prevLogIndex+1);
             this.persistentState.appendLogEntries(request.entries);
             successfulAppend = true;
@@ -298,11 +312,6 @@ public class RaftServer implements NetworkManager.SerializableHandler {
                 request.serverId).address, reply);
     }
 
-    // A2DO implement this
-    private String execute(String command) {
-        return command;
-    }
-
     /**
      * Checks whether we can append the sent log entries to our log.
      * Only called when processing a AppendEntries request.
@@ -310,7 +319,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      * @param senderPrevLogterm  prevLogTerm field of the request.
      * @return true iff we can append the sent entries.
      */
-    private synchronized boolean checkCanAppend(int senderPrevLogIndex, int senderPrevLogTerm) {
+    private synchronized boolean canAppend(int senderPrevLogIndex, int senderPrevLogTerm) {
         if (senderPrevLogIndex == -1) {
             // Here, the sender is trying to get us to append zero or more
             // entries starting at index zero
@@ -326,11 +335,12 @@ public class RaftServer implements NetworkManager.SerializableHandler {
     }
 
     /**
-     * Processes an RequestVote request from a candidate and sends a reply.
+     * Processes a valid RequestVote request from a candidate and sends a reply.
      * @param request data corresponding to RequestVotes request
      */
     private synchronized void handleRequestVoteRequest(RequestVoteRequest request) {        
-        boolean grantVote = checkGrantVote(request);
+        boolean grantVote =
+                checkGrantVote(request.serverId, request.lastLogIndex, request.lastLogTerm);
 
         if (grantVote) {
             assert(this.role == Role.FOLLOWER);
@@ -346,20 +356,17 @@ public class RaftServer implements NetworkManager.SerializableHandler {
     }
 
     /**
-     * Determines whether or not we should grant the vote based on the message.
-     * Only called when processing a RequestVote request.
-     * @param request data corresponding to RequestVotes request
-     * @return true iff sender term is not stale, recipient can vote
-     *         for the candidate, and candidate's log is at least as
-     *         up-to-date as ours.
+     * Determines whether or not we should grant the vote to the sender.
+     * Only called when processing a RequestVotes request.
+     * @param senderId server id of the sender
+     * @param senderLastLogIndex index of the last log entry of the sender
+     * @param senderLastLogTerm term of the last log entry of the sender
+     * @return true recipient can vote for the sender, and sender's log
+     *         is at least as up-to-date as ours.
      */
-    private synchronized boolean checkGrantVote(RequestVoteRequest request) {
-        if (request.term < this.persistentState.currentTerm) {
-            return false;
-        }
-
+    private synchronized boolean checkGrantVote(String senderId, int senderLastLogIndex, int senderLastLogTerm) {
         boolean votedForAnotherServer = !(this.persistentState.votedFor == null
-                || this.persistentState.votedFor.equals(request.serverId));
+                || this.persistentState.votedFor.equals(senderId));
 
         if (votedForAnotherServer) {
             return false;
@@ -371,7 +378,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
         if (this.persistentState.log.size()==0) {
             return true;
         }
-        if (request.lastLogIndex == -1) {
+        if (senderLastLogIndex == -1) {
             // Here, our sender's log is empty and ours is not
             return false;
         }
@@ -379,25 +386,22 @@ public class RaftServer implements NetworkManager.SerializableHandler {
         int lastLogIndex = this.persistentState.log.size() - 1;
         int lastLogTerm = this.persistentState.log.get(lastLogIndex).term;
 
-        if (request.lastLogTerm > lastLogTerm) {
+        if (senderLastLogTerm > lastLogTerm) {
             return true;
         }
-        if (request.lastLogTerm < lastLogTerm) {
+        if (senderLastLogTerm < lastLogTerm) {
             return false;
         }
 
-        return request.lastLogIndex >= lastLogIndex;
+        return senderLastLogIndex >= lastLogIndex;
     }
 
     /**
-     * Processes an AppendEntries reply.
+     * Processes a valid AppendEntries reply.
      * @param AppendEntriesReply reply to AppendEntriesReply request
      */
     private synchronized void handleAppendEntriesReply(AppendEntriesReply reply) {
         if (this.role != Role.LEADER) {
-            return;
-        }
-        if (reply.term < this.persistentState.currentTerm) {
             return;
         }
 
@@ -420,14 +424,11 @@ public class RaftServer implements NetworkManager.SerializableHandler {
     }
 
     /**
-     * Processes an RequestVote reply.
+     * Processes a valid RequestVote reply.
      * @param RequestVoteReply reply to RequestVote request
      */
     private synchronized void handleRequestVoteReply(RequestVoteReply reply) {
         if (this.role != Role.CANDIDATE) {
-            return;
-        }
-        if (reply.term < this.persistentState.currentTerm) {
             return;
         }
         if (reply.grantVote) {
@@ -500,16 +501,15 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             int lastLogIndex = persistentState.log.size() - 1;
             int lastLogTerm = logEntryHasIndex(lastLogIndex) ?
                     persistentState.log.get(lastLogIndex).term : UNDEFINED_LOG_TERM;
+            logMessage("new election - broadcasting RequestVote requests");
+            RaftMessage request = new RequestVoteRequest(myId, 
+                    persistentState.currentTerm, lastLogIndex, lastLogTerm);
 
-                    logMessage("new election - broadcasting RequestVote requests");
-                    RaftMessage request = new RequestVoteRequest(myId, 
-                            persistentState.currentTerm, lastLogIndex, lastLogTerm);
-
-                    for (ServerMetadata meta : peerMetadataMap.values()) {
-                        networkManager.sendSerializable(meta.address, request);
-                    }
-                    restartElectionTimer.run();
-                    break;
+            for (ServerMetadata meta : peerMetadataMap.values()) {
+                networkManager.sendSerializable(meta.address, request);
+            }
+            restartElectionTimer.run();
+            break;
         case LEADER:
             // Initializes volatile state specific to leader role.
             for (ServerMetadata meta : peerMetadataMap.values()) {
@@ -567,7 +567,13 @@ public class RaftServer implements NetworkManager.SerializableHandler {
     private boolean logEntryHasIndex(int index) {
         return index >= 0 && index < this.persistentState.log.size();
     }
+    
+    // A2DO implement this
+    private String execute(String command) {
+        return command;
+    }
 
+    // Wrapper method around setting of commitIndex
     private synchronized void updateCommitIndex(int newCommitIndex) {
         if (newCommitIndex <= this.commitIndex) {
             return;

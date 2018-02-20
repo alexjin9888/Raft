@@ -75,14 +75,14 @@ public class RaftClient implements NetworkManager.SerializableHandler {
     
     public synchronized void handleSerializable(Serializable object) {
         if (!(object instanceof ClientReply)) {
-            System.out.println("Don't know how to process the serializable object: " + object);
+            System.out.println("Don't know how to handle the serializable object: " + object);
             return;
         }
         
         ClientReply reply = (ClientReply) object;
         
         if (outstandingRequest == null || outstandingRequest.commandId != reply.commandId) {
-            // The reply that was sent is no longer relevant to us.
+            // This reply is no longer relevant to us.
             return;
         }
         
