@@ -7,7 +7,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
 /**
- * Helper class for object serialization and deserialization.
+ * Utility class that provides some functions for working with objects.
  */
 public abstract class ObjectUtils {
     

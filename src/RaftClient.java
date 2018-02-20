@@ -11,7 +11,7 @@ import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
 import misc.NetworkManager;
 
-public class RaftClient implements NetworkManager.SerializableHandler {
+public class RaftClient {
     
     /**
      * Amount of time to wait for a reply before we send another request.
@@ -67,7 +67,7 @@ public class RaftClient implements NetworkManager.SerializableHandler {
             numCommandsRead = 0;
             retryRequestTimer = new Timer();
 
-            networkManager = new NetworkManager(this.myAddress, this);
+            networkManager = new NetworkManager(this.myAddress, this::handleSerializable);
             
             waitForAndProcessInput();
         }

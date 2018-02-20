@@ -38,7 +38,7 @@ import misc.NetworkManager;
  * COMMENT2DO: reword comment so that it better describes what this class represents.
  * Make the comment more direct.
  */
-public class RaftServer implements NetworkManager.SerializableHandler {
+public class RaftServer {
     // To ensure that at most one thread accesses server state at any given
     // time, all instance methods within this class are synchronized.
     // Furthermore, if any code in this file accesses server state in a new
@@ -194,7 +194,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             this.role = null;
             transitionRole(Role.FOLLOWER);
 
-            networkManager = new NetworkManager(myAddress, this);
+            networkManager = new NetworkManager(myAddress, this::handleSerializable);
             logMessage("successfully booted");
         }
     }

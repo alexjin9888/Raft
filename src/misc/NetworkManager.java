@@ -13,6 +13,8 @@ import java.util.HashMap;
 import java.util.Timer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,11 +38,6 @@ public class NetworkManager {
     
     private Timer removeWriteSocketTimer;
     
-    // Receiver-specific attributes and resources
-    public interface SerializableHandler {
-        public void handleSerializable(Serializable object);
-    }
-    
     private ServerSocket listenerSocket;
     
     // Shared attributes and resources
@@ -57,7 +54,7 @@ public class NetworkManager {
     private static final Logger myLogger = LogManager.getLogger();
     
     
-    public NetworkManager(InetSocketAddress myAddress, SerializableHandler serializableHandler) {
+    public NetworkManager(InetSocketAddress myAddress, Consumer<Serializable> serializableHandler) {
         addrToWriteSocketInfo = new HashMap<InetSocketAddress, WriteSocketInfo>();
         removeWriteSocketTimer = new Timer();
         
@@ -91,7 +88,7 @@ public class NetworkManager {
                             // I/O error or read timeout errors.
                             while (true) {
                                 // We block until a serializable object is read or an I/O error occurs.
-                                serializableHandler.handleSerializable((Serializable) ois.readObject());
+                                serializableHandler.accept((Serializable) ois.readObject());
                             }
                         } catch (SocketTimeoutException|EOFException e) {
                             // Sender stopped talking to us so we close
