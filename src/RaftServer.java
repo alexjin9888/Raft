@@ -133,14 +133,14 @@ public class RaftServer implements NetworkManager.SerializableHandler {
     private NetworkManager networkManager;
 
     /**
-     * Single thread manager that will execute the commands for us in order.
-     */
-    private ExecutorService inOrderCommandApplier;
-    /**
      * Map that we can query to see whether we need to reply to a particular
      * client after applying the command of a log entry.
      */
     private HashMap<LogEntry, ClientRequest> outstandingClientRequestsMap;
+    /**
+     * Single thread manager that will execute the commands for us in order.
+     */
+    private ExecutorService inOrderCommandApplier;
     
     /**
      * Tracing and debugging logger;
@@ -155,13 +155,14 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      * @param myId my server id
      */
     public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
+        // As part of initialization, spins up three threads to help this
+        // server carry out the Raft protocol. One thread is a timeout tasks
+        // executor thread (see Timer initialization below), another thread is a
+        // command executor thread (see ExecutorService initialization below),
+        // and another thread is a connections acceptor thread (see
+        // NetworkManager initialization).
+        
         synchronized(RaftServer.this) {
-            // As part of initialization, spins up two threads to help this
-            // server carry out the Raft protocol. One thread is a timer thread
-            // (see Timer initialization below) and another thread is a network
-            // manager thread (see NetworkManager initialization). We also
-            // make use of a thread pool for applying log commands.
-
             this.myId = myId;
             leaderId = null;
             peerMetadataMap = new HashMap<String, ServerMetadata>();
@@ -186,17 +187,13 @@ public class RaftServer implements NetworkManager.SerializableHandler {
             // peers.
             commitIndex = this.persistentState.lastApplied;
        
-            this.inOrderCommandApplier = Executors.newSingleThreadExecutor();
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
-
-            // Spins up a thread that allows us to schedule timeout tasks
+            inOrderCommandApplier = Executors.newSingleThreadExecutor();
             timeoutTimer = new Timer();
 
             this.role = null;
             transitionRole(Role.FOLLOWER);
 
-            // Spins up a thread that will allow us to receive and handle
-            // incoming messages.
             networkManager = new NetworkManager(myAddress, this);
             logMessage("successfully booted");
         }
@@ -361,7 +358,7 @@ public class RaftServer implements NetworkManager.SerializableHandler {
      * @param senderId server id of the sender
      * @param senderLastLogIndex index of the last log entry of the sender
      * @param senderLastLogTerm term of the last log entry of the sender
-     * @return true recipient can vote for the sender, and sender's log
+     * @return true iff recipient can vote for the sender, and sender's log
      *         is at least as up-to-date as ours.
      */
     private synchronized boolean checkGrantVote(String senderId, int senderLastLogIndex, int senderLastLogTerm) {
