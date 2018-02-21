@@ -36,6 +36,17 @@ public class PersistentState implements Serializable {
     private String myId;
 
     /**
+     * Unique directory used to store persistent state on disk
+     */
+    private Path baseDir;
+
+    // TODO comment
+    private File persistentStateCurrentTerm;
+    private File persistentStateVotedFor;
+    private File persistentStateLastApplied;
+    private File persistentStateLog;
+
+    /**
      * Attempt to load persistent state data from disk.
      * If the state does not exist on disk, initialize.
      * @param myId See top of class file
@@ -51,6 +62,84 @@ public class PersistentState implements Serializable {
         
         // A2DO: load list of log entries from disk using the second LogEntry
         // constructor. See LogEntry.java for details.
+        this.baseDir = "~/" + myId;
+        if (Files.exists(baseDir)) {
+            loadPersistentStateFromDisk();
+        } else {
+            createNewPersistentStateStorage();
+            persistToDisk(currentTerm.toString(), persistentStateCurrentTerm);
+            persistToDisk(votedFor.toString(), persistentStateVotedFor);
+            persistToDisk(lastApplied.toString(), persistentStateLastApplied);
+            persistToDisk(log.toString(), persistentStateLog);
+        }
+    }
+
+    /**
+     * Create a new directory and files to store persistent state on disk.
+     */
+    private void createNewPersistentStateStorage() {
+        try {
+            Files.createDirectories(Paths.get(baseDir));
+            persistentStateCurrentTerm = new File(baseDir + "/" + "CurrentTerm.log");
+            persistentStateCurrentTerm.createNewFile();
+            persistentStateVotedFor = new File(baseDir + "/" + "VotedFor.log");
+            persistentStateVotedFor.createNewFile();
+            persistentStateLastApplied = new File(baseDir + "/" + "LastApplied.log");
+            persistentStateLastApplied.createNewFile();
+            persistentStateLog = new File(baseDir + "/" + "Log.log");
+            persistentStateLog.createNewFile();
+        } catch (IOException e) {
+            throw new PersistentStateException(e, baseDir,
+                    "Cannot create new persistent state. ");
+        }
+    }
+
+    /**
+     * Load persistent state on disk and check that they are well-formed.
+     */
+    private void loadPersistentStateFromDisk() {
+        try {
+            persistentStateCurrentTerm = new File(baseDir + "/" + "CurrentTerm.log");
+            persistentStateVotedFor = new File(baseDir + "/" + "VotedFor.log");
+            persistentStateLastApplied = new File(baseDir + "/" + "LastApplied.log");
+            persistentStateLog = new File(baseDir + "/" + "Log.log");
+            BufferedReader reader;
+            reader = new BufferedReader( new InputStreamReader(
+                    new FileInputStream(persistentStateCurrentTerm)));
+            reader.close();
+            currentTerm = Integer.parseInt(reader.readLine());
+            reader = new BufferedReader( new InputStreamReader(
+                    new FileInputStream(persistentStateVotedFor)));
+            reader.close();
+            votedFor = Integer.parseInt(reader.readLine());
+            reader = new BufferedReader( new InputStreamReader(
+                    new FileInputStream(persistentStateLastApplied)));
+            reader.close();
+            lastApplied = Integer.parseInt(reader.readLine());
+            reader = new BufferedReader( new InputStreamReader(
+                    new FileInputStream(persistentStateLog)));
+            reader.close();
+            currentTerm = LogEntry(reader.readLines());
+        } catch (IOException | NumberFormatException e) {
+            throw new PersistentStateException(e, baseDir,
+                    "Cannot load persistent state from disk. ");
+        }
+    }
+
+    private void persistToDisk(String data, File file) {
+        try {
+            File tempFile = File.createTempFile(file.getName(), null);
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                new FileOutputStream(tempFile)));
+            writer.write(data);
+            writer.flush();
+            writer.close();
+            Files.move(Paths.get(tempFile.getPath()), Paths.get(file.getPath()), 
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new PersistentStateException(e, baseDir, 
+                    "Cannot persist to disk.");
+        }
     }
 
     /**
@@ -60,6 +149,7 @@ public class PersistentState implements Serializable {
      */
     public synchronized void setTerm(int currentTerm) {
         this.currentTerm = currentTerm;
+        persistToDisk(currentTerm.toString(), persistentStateCurrentTerm);
     }
 
     /**
@@ -69,6 +159,7 @@ public class PersistentState implements Serializable {
      */
     public synchronized void setVotedFor(String votedFor) {
         this.votedFor = votedFor;
+        persistToDisk(votedFor.toString(), persistentStateVotedFor);
     }
     
     /**
@@ -82,6 +173,7 @@ public class PersistentState implements Serializable {
         // anything (e.g., don't do any disk I/O) and return.
         
         this.log.subList(index, this.log.size()).clear();
+        persistToDisk(log.toString(), persistentStateLog);
     }
     
     /**
@@ -95,6 +187,7 @@ public class PersistentState implements Serializable {
         // case that the caller passes in an empty list.
 
         this.log.addAll(newEntries);
+        persistToDisk(log.toString(), persistentStateLog);
     }
 
     /**
@@ -102,5 +195,6 @@ public class PersistentState implements Serializable {
      */
     public synchronized void incrementLastApplied() {
         this.lastApplied += 1;
+        persistToDisk(lastApplied.toString(), persistentStateLastApplied);
     }
 }
