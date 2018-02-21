@@ -1,4 +1,6 @@
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.Iterator;
@@ -567,7 +569,26 @@ public class RaftServer {
     
     // A2DO implement this
     private String execute(String command) {
-        return command;
+        StringBuffer outputBuffer = new StringBuffer();
+
+        Process p;
+        try {
+            p = Runtime.getRuntime().exec("bash -c " + command);
+            p.waitFor();
+            BufferedReader reader = 
+                new BufferedReader(new InputStreamReader(p.getInputStream()));
+
+            String line = "";           
+            while ((line = reader.readLine())!= null) {
+                outputBuffer.append(line + "\n");
+            }
+        } catch (Exception e) {
+            // If executing a command lead to exception, we should note this and
+            // continue
+            e.printStackTrace();
+        }
+
+        return outputBuffer.toString();
     }
 
     // Wrapper method around setting of commitIndex
