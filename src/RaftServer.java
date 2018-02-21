@@ -567,7 +567,8 @@ public class RaftServer {
         return index >= 0 && index < this.persistentState.log.size();
     }
     
-    // A2DO implement this
+    // Executes a given command by calling the system process
+    // Failures are ignored
     private String execute(String command) {
         StringBuffer outputBuffer = new StringBuffer();
 
@@ -652,28 +653,42 @@ public class RaftServer {
         //       not sure if we have to implement any extra checks to achieve this
 
         int myPortIndex = -1;
-        String[] allPortStrings = null;
+        String[] allHostsStrings = null;
         int[] allPorts = null;
         boolean validArgs = true;
+        String[] addPort = null;
+        int port = null;
+        HashMap<String, InetSocketAddress> serverAddressesMap = 
+                new HashMap<String, InetSocketAddress>();
+        InetSocketAddress serverAddress = null;
 
         // This if-else block checks to see if supplied arguments are valid.
         if (args.length != 2) {
             validArgs = false;
         } else {
-            allPortStrings = args[0].split(",");
-            allPorts = new int[allPortStrings.length];
-            try {
-                myPortIndex = Integer.parseInt(args[1]);
-                if (myPortIndex < 0 || myPortIndex >= allPortStrings.length) {
+            allHostsStrings = args[0].split(",");
+            for (int i=0; i<allHostsStrings.length; i++) {
+                addPort = allHostsStrings[i].split(":")
+                if (addPort.length != 2) {
                     validArgs = false;
+                    break;
                 }
-                for (int i=0; i<allPortStrings.length; i++) {
-                    allPorts[i] = Integer.parseInt(allPortStrings[i]);
+                try {
+                    port = Integer.parseInt(addPort[1]);
+                    serverAddress = new InetSocketAddress(addPort[0], port);
+                } catch (Exception e) {
+                    validArgs = false;
+                    break;
                 }
-            } catch (NumberFormatException e) {
-                validArgs = false;
+                serverAddressesMap.put("Server" + i, serverAddress);
             }
         }
+        try {
+            myPortIndex = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            validArgs = false;
+        }
+
         if (!validArgs) {
             System.out.println("Please supply exactly two valid arguments");
             System.out.println(
@@ -683,12 +698,6 @@ public class RaftServer {
         }
 
         System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
-        HashMap<String, InetSocketAddress> serverAddressesMap = 
-                new HashMap<String, InetSocketAddress>();
-        for (int i=0; i<allPorts.length; i++) {
-            serverAddressesMap.put("Server" + i, new 
-                    InetSocketAddress("localhost", allPorts[i]));   
-        }
 
         // Java doesn't like calling constructors without an
         // assignment to a variable, even if that variable is not used.
