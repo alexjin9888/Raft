@@ -147,13 +147,58 @@ public class RaftClient {
         // A2DO: ensure that list of server addresses passed in is non-empty
         // A2DO: start up a single client using the passed-in arguments
         
-        // A2DO: remove this hardcoding
         ArrayList<InetSocketAddress> serverAddresses = new ArrayList<InetSocketAddress>();
-        
-        for (int i = 0; i < 3; i++) {
-            serverAddresses.add(new InetSocketAddress("localhost", 6060 + i));            
+
+        int myPortIndex = -1;
+        String[] allHostsStrings = null;
+        int[] allPorts = null;
+        boolean validArgs = true;
+        String[] addPort = null;
+        int port = null;
+        InetSocketAddress serverAddress = null;
+        InetSocketAddress myAddress = null;
+
+        if (args.length != 2) {
+            validArgs = false;
+        } else {
+            addPort = args[0].split(":")
+            if (addPort.length != 2) {
+                validArgs = false;
+                break;
+            }
+            try {
+                port = Integer.parseInt(addPort[1]);
+                myAddress = new InetSocketAddress(addPort[0], port);
+            } catch (Exception e) {
+                validArgs = false;
+                break;
+            }
+            allHostsStrings = args[1].split(",");
+            for (int i=0; i<allHostsStrings.length; i++) {
+                addPort = allHostsStrings[i].split(":")
+                if (addPort.length != 2) {
+                    validArgs = false;
+                    break;
+                }
+                try {
+                    port = Integer.parseInt(addPort[1]);
+                    serverAddress = new InetSocketAddress(addPort[0], port);
+                } catch (Exception e) {
+                    validArgs = false;
+                    break;
+                }
+                serverAddresses.add(serverAddress);
+            }
+        }
+
+        if (!validArgs) {
+            System.out.println("Please supply exactly two valid arguments");
+            System.out.println(
+                    "Usage: <myHostname:myPort> <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$>");
+            System.out.println("Note: List of ports is 0-indexed");
+            System.exit(1);
         }
         
-        RaftClient client = new RaftClient(new InetSocketAddress("localhost", 6070), serverAddresses);
+        RaftClient client = new RaftClient(myAddress, serverAddresses);
     }
 }

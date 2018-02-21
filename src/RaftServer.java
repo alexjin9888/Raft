@@ -662,7 +662,6 @@ public class RaftServer {
                 new HashMap<String, InetSocketAddress>();
         InetSocketAddress serverAddress = null;
 
-        // This if-else block checks to see if supplied arguments are valid.
         if (args.length != 2) {
             validArgs = false;
         } else {
@@ -692,7 +691,7 @@ public class RaftServer {
         if (!validArgs) {
             System.out.println("Please supply exactly two valid arguments");
             System.out.println(
-                    "Usage: <port0>,<port1>,...,<port$n-1$> <myPortIndex>");
+                    "Usage: <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$> <myAddressIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
         }
