@@ -657,7 +657,7 @@ public class RaftServer {
         int[] allPorts = null;
         boolean validArgs = true;
         String[] addPort = null;
-        int port = null;
+        int port = -1;
         HashMap<String, InetSocketAddress> serverAddressesMap = 
                 new HashMap<String, InetSocketAddress>();
         InetSocketAddress serverAddress = null;
@@ -667,7 +667,7 @@ public class RaftServer {
         } else {
             allHostsStrings = args[0].split(",");
             for (int i=0; i<allHostsStrings.length; i++) {
-                addPort = allHostsStrings[i].split(":")
+                addPort = allHostsStrings[i].split(":");
                 if (addPort.length != 2) {
                     validArgs = false;
                     break;

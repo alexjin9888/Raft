@@ -154,28 +154,27 @@ public class RaftClient {
         int[] allPorts = null;
         boolean validArgs = true;
         String[] addPort = null;
-        int port = null;
+        int port = -1;
         InetSocketAddress serverAddress = null;
         InetSocketAddress myAddress = null;
 
         if (args.length != 2) {
             validArgs = false;
         } else {
-            addPort = args[0].split(":")
+            addPort = args[0].split(":");
             if (addPort.length != 2) {
                 validArgs = false;
-                break;
-            }
-            try {
-                port = Integer.parseInt(addPort[1]);
-                myAddress = new InetSocketAddress(addPort[0], port);
-            } catch (Exception e) {
-                validArgs = false;
-                break;
+            } else {
+                try {
+                    port = Integer.parseInt(addPort[1]);
+                    myAddress = new InetSocketAddress(addPort[0], port);
+                } catch (Exception e) {
+                    validArgs = false;
+                }
             }
             allHostsStrings = args[1].split(",");
             for (int i=0; i<allHostsStrings.length; i++) {
-                addPort = allHostsStrings[i].split(":")
+                addPort = allHostsStrings[i].split(":");
                 if (addPort.length != 2) {
                     validArgs = false;
                     break;
