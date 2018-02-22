@@ -77,7 +77,7 @@ public class PersistentState implements Serializable {
         } else {
             createNewPersistentStateStorage();
             persistToDisk(Integer.toString(currentTerm), persistentStateCurrentTerm);
-            persistToDisk(votedFor.toString(), persistentStateVotedFor);
+            persistToDisk(votedFor, persistentStateVotedFor);
             persistToDisk(Integer.toString(lastApplied), persistentStateLastApplied);
             persistToDisk(log.toString(), persistentStateLog);
         }
@@ -121,6 +121,7 @@ public class PersistentState implements Serializable {
                     new FileInputStream(persistentStateVotedFor)));
             reader.close();
             votedFor = reader.readLine();
+            votedFor = votedFor == "NULL" ? null : votedFor;
             reader = new BufferedReader( new InputStreamReader(
                     new FileInputStream(persistentStateLastApplied)));
             reader.close();
@@ -147,7 +148,7 @@ public class PersistentState implements Serializable {
             File tempFile = File.createTempFile(file.getName(), null);
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
                 new FileOutputStream(tempFile)));
-            writer.write(data);
+            writer.write(data == null ? "NULL" : data);
             writer.flush();
             writer.close();
             Files.move(Paths.get(tempFile.getPath()), Paths.get(file.getPath()), 
@@ -175,7 +176,7 @@ public class PersistentState implements Serializable {
      */
     public synchronized void setVotedFor(String votedFor) {
         this.votedFor = votedFor;
-        persistToDisk(votedFor.toString(), persistentStateVotedFor);
+        persistToDisk(votedFor, persistentStateVotedFor);
     }
     
     /**
