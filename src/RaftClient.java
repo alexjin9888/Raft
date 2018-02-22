@@ -9,7 +9,9 @@ import java.util.concurrent.ThreadLocalRandom;
 import messages.ClientReply;
 import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
+import misc.InvalidArgumentException;
 import misc.NetworkManager;
+import misc.addressParser;
 
 public class RaftClient {
     
@@ -161,32 +163,19 @@ public class RaftClient {
         if (args.length != 2) {
             validArgs = false;
         } else {
-            addPort = args[0].split(":");
-            if (addPort.length != 2) {
+            try {
+                myAddress = addressParser.parse(args[0]);
+            } catch (InvalidArgumentException e) {
                 validArgs = false;
-            } else {
-                try {
-                    port = Integer.parseInt(addPort[1]);
-                    myAddress = new InetSocketAddress(addPort[0], port);
-                } catch (Exception e) {
-                    validArgs = false;
-                }
             }
             allHostsStrings = args[1].split(",");
             for (int i=0; i<allHostsStrings.length; i++) {
-                addPort = allHostsStrings[i].split(":");
-                if (addPort.length != 2) {
-                    validArgs = false;
-                    break;
-                }
                 try {
-                    port = Integer.parseInt(addPort[1]);
-                    serverAddress = new InetSocketAddress(addPort[0], port);
-                } catch (Exception e) {
+                    serverAddresses.add(addressParser.parse(allHostsStrings[i]));
+                } catch (InvalidArgumentException e) {
                     validArgs = false;
                     break;
                 }
-                serverAddresses.add(serverAddress);
             }
         }
 

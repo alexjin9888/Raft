@@ -29,7 +29,9 @@ import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
 import misc.PersistentState;
 import misc.PersistentStateException;
+import misc.addressParser;
 import misc.CheckingCancelTimerTask;
+import misc.InvalidArgumentException;
 import misc.LogEntry;
 import misc.NetworkManager;
 
@@ -654,32 +656,22 @@ public class RaftServer {
 
         int myPortIndex = -1;
         String[] allHostsStrings = null;
-        int[] allPorts = null;
         boolean validArgs = true;
-        String[] addPort = null;
-        int port = -1;
         HashMap<String, InetSocketAddress> serverAddressesMap = 
                 new HashMap<String, InetSocketAddress>();
-        InetSocketAddress serverAddress = null;
 
         if (args.length != 2) {
             validArgs = false;
         } else {
             allHostsStrings = args[0].split(",");
             for (int i=0; i<allHostsStrings.length; i++) {
-                addPort = allHostsStrings[i].split(":");
-                if (addPort.length != 2) {
-                    validArgs = false;
-                    break;
-                }
                 try {
-                    port = Integer.parseInt(addPort[1]);
-                    serverAddress = new InetSocketAddress(addPort[0], port);
-                } catch (Exception e) {
+                    serverAddressesMap.put("Server" + i, 
+                            addressParser.parse(allHostsStrings[i]));
+                } catch (InvalidArgumentException e) {
                     validArgs = false;
                     break;
                 }
-                serverAddressesMap.put("Server" + i, serverAddress);
             }
         }
         try {
