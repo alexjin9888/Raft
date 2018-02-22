@@ -104,8 +104,8 @@ public class PersistentState implements Serializable {
             persistentStateLog = new File(baseDir + "/" + "Log.log");
             persistentStateLog.createNewFile();
         } catch (IOException e) {
-            throw new PersistentStateException(
-                    "Cannot create new persistent state: " + baseDir);
+            throw new PersistentStateException(e.getMessage()+
+                    "\nCannot create new persistent state: " + baseDir);
         }
     }
 
@@ -121,24 +121,24 @@ public class PersistentState implements Serializable {
             BufferedReader reader;
             reader = new BufferedReader( new InputStreamReader(
                     new FileInputStream(persistentStateCurrentTerm)));
-            reader.close();
             currentTerm = Integer.parseInt(reader.readLine());
+            reader.close();
             reader = new BufferedReader( new InputStreamReader(
                     new FileInputStream(persistentStateVotedFor)));
-            reader.close();
             votedFor = reader.readLine();
+            reader.close();
             votedFor = votedFor == "NULL" ? null : votedFor;
             reader = new BufferedReader( new InputStreamReader(
                     new FileInputStream(persistentStateLastApplied)));
-            reader.close();
             lastApplied = Integer.parseInt(reader.readLine());
+            reader.close();
             reader = new BufferedReader( new InputStreamReader(
                     new FileInputStream(persistentStateLog)));
-            reader.close();
             readlogs(reader);
+            reader.close();
         } catch (IOException | NumberFormatException e) {
-            throw new PersistentStateException(
-                    "Cannot load persistent state from disk: " + baseDir);
+            throw new PersistentStateException(e.getMessage() +
+                    "\nCannot load persistent state from disk: " + baseDir);
         }
     }
     
@@ -154,7 +154,7 @@ public class PersistentState implements Serializable {
         for (LogEntry logEntry: logEntries) {
             stringifiedLogs += logEntry.toString() + "\n";
         }
-        return stringifiedLogs;
+        return stringifiedLogs.substring(0, stringifiedLogs.length()-1);
     }
 
     private synchronized void persistToDisk(String data, File file, boolean append) {
@@ -165,8 +165,8 @@ public class PersistentState implements Serializable {
             writer.flush();
             writer.close();
         } catch (IOException e) {
-            throw new PersistentStateException(
-                    "Cannot persist to disk: "+baseDir);
+            throw new PersistentStateException(e.getMessage() +
+                    "\nCannot persist to disk: "+baseDir);
         }
     }
 
@@ -219,8 +219,8 @@ public class PersistentState implements Serializable {
             f.setLength(length+1);
             f.close();
         } catch (IOException e) {
-            throw new PersistentStateException(
-                    "Cannot truncate logs: "+baseDir);
+            throw new PersistentStateException(e.getMessage()+
+                    "\nCannot truncate logs: "+baseDir);
         }
     }
     

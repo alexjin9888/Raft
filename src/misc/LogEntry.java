@@ -13,7 +13,7 @@ public class LogEntry implements Serializable {
     public String command; // To be executed on each server
     
     private final static Pattern pattern = Pattern.compile(
-            "LogEntry [index=(\\d+), term=(\\d+), command=(.*)]");
+            "LogEntry \\[index=(\\d+), term=(\\d+), command=(.*)\\]");
 
     private static int INDEX_GRP = 1;
     private static int TERM_GRP = 2;
@@ -31,6 +31,12 @@ public class LogEntry implements Serializable {
     
     public LogEntry(String stringifiedLogEntry) {
         Matcher m = pattern.matcher(stringifiedLogEntry);
+        System.out.println(stringifiedLogEntry);
+        System.out.println(m.toString());
+        if (!m.matches()) {
+            throw new PersistentStateException(
+                    "Cannot parse log entry: " + stringifiedLogEntry);
+        }
         this.index = Integer.parseInt(m.group(INDEX_GRP));
         this.term = Integer.parseInt(m.group(TERM_GRP));
         this.command = m.group(COMMAND_GRP);
