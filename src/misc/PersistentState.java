@@ -3,11 +3,14 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.RandomAccessFile;
 import java.io.Serializable;
+import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -32,7 +35,7 @@ public class PersistentState implements Serializable {
     /**
      * List of the server's log entries
      */
-    public List<LogEntry> log;
+    public ArrayList<LogEntry> log;
     /**
      * index of highest log entry applied to state machine
      * (initialized to -1, increases monotonically)
@@ -76,17 +79,20 @@ public class PersistentState implements Serializable {
             loadPersistentStateFromDisk();
         } else {
             createNewPersistentStateStorage();
-            persistToDisk(Integer.toString(currentTerm), persistentStateCurrentTerm);
-            persistToDisk(votedFor, persistentStateVotedFor);
-            persistToDisk(Integer.toString(lastApplied), persistentStateLastApplied);
-            persistToDisk(log.toString(), persistentStateLog);
+            persistToDisk(Integer.toString(currentTerm),
+                    persistentStateCurrentTerm, false);
+            persistToDisk(votedFor, persistentStateVotedFor, false);
+            persistToDisk(Integer.toString(lastApplied),
+                    persistentStateLastApplied, false);
+            persistToDisk(stringifyLogs(log),
+                    persistentStateLog, false);
         }
     }
 
     /**
      * Create a new directory and files to store persistent state on disk.
      */
-    private void createNewPersistentStateStorage() {
+    private synchronized void createNewPersistentStateStorage() {
         try {
             Files.createDirectories(Paths.get(baseDir));
             persistentStateCurrentTerm = new File(baseDir + "/" + "CurrentTerm.log");
@@ -106,7 +112,7 @@ public class PersistentState implements Serializable {
     /**
      * Load persistent state on disk and check that they are well-formed.
      */
-    private void loadPersistentStateFromDisk() {
+    private synchronized void loadPersistentStateFromDisk() {
         try {
             persistentStateCurrentTerm = new File(baseDir + "/" + "CurrentTerm.log");
             persistentStateVotedFor = new File(baseDir + "/" + "VotedFor.log");
@@ -136,23 +142,28 @@ public class PersistentState implements Serializable {
         }
     }
     
-    private void readlogs(BufferedReader reader) throws IOException {
+    private synchronized void readlogs(BufferedReader reader) throws IOException {
         String line;
         while ((line = reader.readLine()) != null) {
             log.add(new LogEntry(line));
         }
     }
+    
+    private String stringifyLogs(ArrayList<LogEntry> logEntries) {
+        String stringifiedLogs = "";
+        for (LogEntry logEntry: logEntries) {
+            stringifiedLogs += logEntry.toString() + "\n";
+        }
+        return stringifiedLogs;
+    }
 
-    private void persistToDisk(String data, File file) {
+    private synchronized void persistToDisk(String data, File file, boolean append) {
         try {
-            File tempFile = File.createTempFile(file.getName(), null);
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                new FileOutputStream(tempFile)));
+                new FileOutputStream(file, append)));
             writer.write(data == null ? "NULL" : data);
             writer.flush();
             writer.close();
-            Files.move(Paths.get(tempFile.getPath()), Paths.get(file.getPath()), 
-                    StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new PersistentStateException(
                     "Cannot persist to disk: "+baseDir);
@@ -166,7 +177,8 @@ public class PersistentState implements Serializable {
      */
     public synchronized void setTerm(int currentTerm) {
         this.currentTerm = currentTerm;
-        persistToDisk(Integer.toString(currentTerm), persistentStateCurrentTerm);
+        persistToDisk(Integer.toString(currentTerm), persistentStateCurrentTerm,
+                false);
     }
 
     /**
@@ -176,7 +188,7 @@ public class PersistentState implements Serializable {
      */
     public synchronized void setVotedFor(String votedFor) {
         this.votedFor = votedFor;
-        persistToDisk(votedFor, persistentStateVotedFor);
+        persistToDisk(votedFor, persistentStateVotedFor, false);
     }
     
     /**
@@ -188,9 +200,28 @@ public class PersistentState implements Serializable {
     public synchronized void truncateAt(int index) {
         // A2DO: if we truncate at an index that is NOT a valid idx, don't do
         // anything (e.g., don't do any disk I/O) and return.
-        
+
+        int numLogsToTruncate = this.log.size() - index;
         this.log.subList(index, this.log.size()).clear();
-        persistToDisk(log.toString(), persistentStateLog);
+        RandomAccessFile f;
+        try {
+            f = new RandomAccessFile(persistentStateLog, "rw");
+            long length = f.length() - 1;
+            byte b;
+            while (numLogsToTruncate > 0) {
+                do {
+                    length -= 1;
+                    f.seek(length);
+                    b = f.readByte();
+                  } while(b != 10);
+                numLogsToTruncate --;
+            }
+            f.setLength(length+1);
+            f.close();
+        } catch (IOException e) {
+            throw new PersistentStateException(
+                    "Cannot truncate logs: "+baseDir);
+        }
     }
     
     /**
@@ -204,7 +235,8 @@ public class PersistentState implements Serializable {
         // case that the caller passes in an empty list.
 
         this.log.addAll(newEntries);
-        persistToDisk(log.toString(), persistentStateLog);
+        persistToDisk(stringifyLogs(newEntries), persistentStateLog,
+                true);
     }
 
     /**
@@ -212,6 +244,7 @@ public class PersistentState implements Serializable {
      */
     public synchronized void incrementLastApplied() {
         this.lastApplied += 1;
-        persistToDisk(Integer.toString(lastApplied), persistentStateLastApplied);
+        persistToDisk(Integer.toString(lastApplied), persistentStateLastApplied,
+                false);
     }
 }
