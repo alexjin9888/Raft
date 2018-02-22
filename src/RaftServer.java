@@ -463,8 +463,8 @@ public class RaftServer {
             timeoutTask.cancel();
         }
 
-        // This restarts (or starts) the election timer when run.
-        Runnable restartElectionTimer = () -> {
+        // Runnable below reschedules (or schedules) the election task when run.
+        Runnable rescheduleElectionTask = () -> {
 
             // Create a timer task to start a new election.
             timeoutTask = new CheckingCancelTimerTask() {
@@ -487,7 +487,7 @@ public class RaftServer {
 
         switch (role) {
         case FOLLOWER:
-            restartElectionTimer.run();
+            rescheduleElectionTask.run();
             break;
         case CANDIDATE:
             // Start an election
@@ -505,7 +505,7 @@ public class RaftServer {
             for (ServerMetadata meta : peerMetadataMap.values()) {
                 networkManager.sendSerializable(meta.address, request);
             }
-            restartElectionTimer.run();
+            rescheduleElectionTask.run();
             break;
         case LEADER:
             // Initializes volatile state specific to leader role.
