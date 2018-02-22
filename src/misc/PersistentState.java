@@ -71,7 +71,7 @@ public class PersistentState implements Serializable {
         
         // A2DO: load list of log entries from disk using the second LogEntry
         // constructor. See LogEntry.java for details.
-        this.baseDir = "~/" + myId;
+        this.baseDir = "./" + myId;
         if (Files.exists(Paths.get(baseDir))) {
             loadPersistentStateFromDisk();
         } else {
