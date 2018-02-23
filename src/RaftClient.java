@@ -12,6 +12,10 @@ import misc.CheckingCancelTimerTask;
 import misc.NetworkManager;
 import misc.AddressUtils;
 
+/**
+ * A Raft client class through which programs can request commands to be
+ * sent, executed and replicated across a Raft cluster.
+ */
 public class RaftClient {
     
     /**
