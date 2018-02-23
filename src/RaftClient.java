@@ -10,6 +10,7 @@ import messages.ClientReply;
 import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
 import misc.NetworkManager;
+import misc.AddressUtils;
 
 public class RaftClient {
     
@@ -147,13 +148,43 @@ public class RaftClient {
         // A2DO: ensure that list of server addresses passed in is non-empty
         // A2DO: start up a single client using the passed-in arguments
         
-        // A2DO: remove this hardcoding
         ArrayList<InetSocketAddress> serverAddresses = new ArrayList<InetSocketAddress>();
-        
-        for (int i = 0; i < 3; i++) {
-            serverAddresses.add(new InetSocketAddress("localhost", 6060 + i));            
+
+        int myPortIndex = -1;
+        String[] allHostsStrings = null;
+        int[] allPorts = null;
+        boolean validArgs = true;
+        String[] addPort = null;
+        int port = -1;
+        InetSocketAddress serverAddress = null;
+        InetSocketAddress myAddress = null;
+
+        if (args.length != 2) {
+            validArgs = false;
+        } else {
+            myAddress = AddressUtils.parse(args[0]);
+            if (myAddress == null) {
+                validArgs = false;
+            }
+            
+            allHostsStrings = args[1].split(",");
+            for (int i=0; i<allHostsStrings.length; i++) {
+                InetSocketAddress hostAddress = AddressUtils.parse(allHostsStrings[i]);
+                if (hostAddress == null) {
+                    validArgs = false;
+                    break;
+                }
+                serverAddresses.add(hostAddress);
+            }
+        }
+
+        if (!validArgs) {
+            System.out.println("Please supply exactly two valid arguments");
+            System.out.println(
+                    "Usage: <myHostname:myPort> <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$>");
+            System.exit(1);
         }
         
-        RaftClient client = new RaftClient(new InetSocketAddress("localhost", 6070), serverAddresses);
+        RaftClient client = new RaftClient(myAddress, serverAddresses);
     }
 }

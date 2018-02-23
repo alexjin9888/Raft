@@ -1,4 +1,7 @@
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.Iterator;
@@ -27,6 +30,7 @@ import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
 import misc.PersistentState;
 import misc.PersistentStateException;
+import misc.AddressUtils;
 import misc.CheckingCancelTimerTask;
 import misc.LogEntry;
 import misc.NetworkManager;
@@ -323,7 +327,7 @@ public class RaftServer {
             return true;
         }
 
-        if (!logEntryHasIndex(senderPrevLogIndex)) {
+        if (!this.persistentState.logHasIndex(senderPrevLogIndex)) {
             return false;
         }
 
@@ -496,7 +500,7 @@ public class RaftServer {
             votedForMeSet = new HashSet<String>();
             votedForMeSet.add(myId);
             int lastLogIndex = persistentState.log.size() - 1;
-            int lastLogTerm = logEntryHasIndex(lastLogIndex) ?
+            int lastLogTerm = this.persistentState.logHasIndex(lastLogIndex) ?
                     persistentState.log.get(lastLogIndex).term : UNDEFINED_LOG_TERM;
             logMessage("new election - broadcasting RequestVote requests");
             RaftMessage request = new RequestVoteRequest(myId, 
@@ -535,7 +539,7 @@ public class RaftServer {
 
                         for (ServerMetadata meta : peerMetadataMap.values()) {
                             int prevLogIndex = meta.nextIndex - 1;
-                            int prevLogTerm = logEntryHasIndex(prevLogIndex)
+                            int prevLogTerm = persistentState.logHasIndex(prevLogIndex)
                                     ? persistentState.log.get(prevLogIndex).term
                                             : UNDEFINED_LOG_TERM;
                                     ArrayList<LogEntry> logEntries =
@@ -543,7 +547,7 @@ public class RaftServer {
                                     // Note: Currently, we send at most one log
                                     // entry to the recipient. This may be something
                                     // we want to optimize in the future.
-                                    if (logEntryHasIndex(meta.nextIndex)) {
+                                    if (persistentState.logHasIndex(meta.nextIndex)) {
                                         logEntries.add(persistentState.log.get(meta.nextIndex));
                                     }
                                     AppendEntriesRequest request =
@@ -561,13 +565,38 @@ public class RaftServer {
         }
     }
 
-    private boolean logEntryHasIndex(int index) {
-        return index >= 0 && index < this.persistentState.log.size();
-    }
     
-    // A2DO implement this
+    
+    // Executes a given command by calling the system process
+    // Failures are ignored
     private String execute(String command) {
-        return command;
+        StringBuffer resultBuffer = new StringBuffer();
+
+        Process p = null;
+        try {
+            p = Runtime.getRuntime().exec("bash -c " + command);
+            p.waitFor();
+            try (InputStream is = p.getInputStream();
+            InputStreamReader isr = new InputStreamReader(is);
+            BufferedReader br = new BufferedReader(isr)) {
+                String resultLine = "";           
+                while ((resultLine = br.readLine())!= null) {
+                    resultBuffer.append(resultLine + "\n");
+                }
+            }
+        } catch (IOException e) {
+            logMessage("Running the client command " + command + " resulted in"
+                    + " an IOException " + e + " while executing.");
+            return e.toString();
+        } catch (InterruptedException e) {
+            // Note: We currently don't call the interrupt method on threads.
+            // In the event that this thread is interrupted, we should log
+            // and continue.
+            logMessage("Thread was interrupted while waiting for the client"
+                    + " command " + command + " to finish executing");
+        }
+
+        return resultBuffer.toString();
     }
 
     // Wrapper method around setting of commitIndex
@@ -631,43 +660,39 @@ public class RaftServer {
         //       not sure if we have to implement any extra checks to achieve this
 
         int myPortIndex = -1;
-        String[] allPortStrings = null;
-        int[] allPorts = null;
+        String[] allHostsStrings = null;
         boolean validArgs = true;
+        HashMap<String, InetSocketAddress> serverAddressesMap = 
+                new HashMap<String, InetSocketAddress>();
 
-        // This if-else block checks to see if supplied arguments are valid.
         if (args.length != 2) {
             validArgs = false;
         } else {
-            allPortStrings = args[0].split(",");
-            allPorts = new int[allPortStrings.length];
-            try {
-                myPortIndex = Integer.parseInt(args[1]);
-                if (myPortIndex < 0 || myPortIndex >= allPortStrings.length) {
+            allHostsStrings = args[0].split(",");
+            for (int i=0; i<allHostsStrings.length; i++) {
+                InetSocketAddress hostAddress = AddressUtils.parse(allHostsStrings[i]);
+                if (hostAddress == null) {
                     validArgs = false;
+                    break;
                 }
-                for (int i=0; i<allPortStrings.length; i++) {
-                    allPorts[i] = Integer.parseInt(allPortStrings[i]);
-                }
-            } catch (NumberFormatException e) {
-                validArgs = false;
+                serverAddressesMap.put("Server" + i, hostAddress);
             }
         }
+        try {
+            myPortIndex = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            validArgs = false;
+        }
+
         if (!validArgs) {
             System.out.println("Please supply exactly two valid arguments");
             System.out.println(
-                    "Usage: <port0>,<port1>,...,<port$n-1$> <myPortIndex>");
+                    "Usage: <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$> <myAddressIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
         }
 
         System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
-        HashMap<String, InetSocketAddress> serverAddressesMap = 
-                new HashMap<String, InetSocketAddress>();
-        for (int i=0; i<allPorts.length; i++) {
-            serverAddressesMap.put("Server" + i, new 
-                    InetSocketAddress("localhost", allPorts[i]));   
-        }
 
         // Java doesn't like calling constructors without an
         // assignment to a variable, even if that variable is not used.
