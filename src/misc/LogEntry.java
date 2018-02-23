@@ -31,8 +31,6 @@ public class LogEntry implements Serializable {
     
     public LogEntry(String stringifiedLogEntry) {
         Matcher m = pattern.matcher(stringifiedLogEntry);
-        System.out.println(stringifiedLogEntry);
-        System.out.println(m.toString());
         if (!m.matches()) {
             throw new PersistentStateException(
                     "Cannot parse log entry: " + stringifiedLogEntry);

@@ -1,5 +1,6 @@
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
@@ -327,7 +328,7 @@ public class RaftServer {
             return true;
         }
 
-        if (!logEntryHasIndex(senderPrevLogIndex)) {
+        if (!this.persistentState.logHasIndex(senderPrevLogIndex)) {
             return false;
         }
 
@@ -500,7 +501,7 @@ public class RaftServer {
             votedForMeSet = new HashSet<String>();
             votedForMeSet.add(myId);
             int lastLogIndex = persistentState.log.size() - 1;
-            int lastLogTerm = logEntryHasIndex(lastLogIndex) ?
+            int lastLogTerm = this.persistentState.logHasIndex(lastLogIndex) ?
                     persistentState.log.get(lastLogIndex).term : UNDEFINED_LOG_TERM;
             logMessage("new election - broadcasting RequestVote requests");
             RaftMessage request = new RequestVoteRequest(myId, 
@@ -539,7 +540,7 @@ public class RaftServer {
 
                         for (ServerMetadata meta : peerMetadataMap.values()) {
                             int prevLogIndex = meta.nextIndex - 1;
-                            int prevLogTerm = logEntryHasIndex(prevLogIndex)
+                            int prevLogTerm = persistentState.logHasIndex(prevLogIndex)
                                     ? persistentState.log.get(prevLogIndex).term
                                             : UNDEFINED_LOG_TERM;
                                     ArrayList<LogEntry> logEntries =
@@ -547,7 +548,7 @@ public class RaftServer {
                                     // Note: Currently, we send at most one log
                                     // entry to the recipient. This may be something
                                     // we want to optimize in the future.
-                                    if (logEntryHasIndex(meta.nextIndex)) {
+                                    if (persistentState.logHasIndex(meta.nextIndex)) {
                                         logEntries.add(persistentState.log.get(meta.nextIndex));
                                     }
                                     AppendEntriesRequest request =
@@ -565,33 +566,38 @@ public class RaftServer {
         }
     }
 
-    private boolean logEntryHasIndex(int index) {
-        return index >= 0 && index < this.persistentState.log.size();
-    }
+    
     
     // Executes a given command by calling the system process
     // Failures are ignored
     private String execute(String command) {
-        StringBuffer outputBuffer = new StringBuffer();
+        StringBuffer resultBuffer = new StringBuffer();
 
-        Process p;
+        Process p = null;
         try {
             p = Runtime.getRuntime().exec("bash -c " + command);
             p.waitFor();
-            BufferedReader reader = 
-                new BufferedReader(new InputStreamReader(p.getInputStream()));
-
-            String line = "";           
-            while ((line = reader.readLine())!= null) {
-                outputBuffer.append(line + "\n");
+            try (InputStream is = p.getInputStream();
+            InputStreamReader isr = new InputStreamReader(is);
+            BufferedReader br = new BufferedReader(isr)) {
+                String resultLine = "";           
+                while ((resultLine = br.readLine())!= null) {
+                    resultBuffer.append(resultLine + "\n");
+                }
             }
-        } catch (Exception e) {
-            // If executing a command lead to exception, we should note this and
-            // continue
-            e.printStackTrace();
+        } catch (IOException e) {
+            logMessage("Running the client command " + command + " resulted in"
+                    + " an IOException " + e + " while executing.");
+            return e.toString();
+        } catch (InterruptedException e) {
+            // Note: We currently don't call the interrupt method on threads.
+            // In the event that this thread is interrupted, we should log
+            // and continue.
+            logMessage("Thread was interrupted while waiting for the client"
+                    + " command " + command + " to finish executing");
         }
 
-        return outputBuffer.toString();
+        return resultBuffer.toString();
     }
 
     // Wrapper method around setting of commitIndex

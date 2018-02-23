@@ -33,7 +33,7 @@ export RAFT_PROJECT_PATH="/Users/donasaur/Documents/workspace-eclipse/190RaftPro
 
 # Open a terminal session and run these commands:
 cd $RAFT_PROJECT_PATH
-sh create-raft-jar.sh
+sh create-raft-jars.sh
 
 # Start up server 0 using the same terminal session:
 java -jar $RAFT_PROJECT_PATH/RaftServer.jar localhost:6060,localhost:6061,localhost:6062 0
