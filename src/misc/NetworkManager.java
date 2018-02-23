@@ -2,9 +2,11 @@ package misc;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InvalidClassException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.io.StreamCorruptedException;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -75,14 +77,12 @@ public class NetworkManager {
             try {
                 listenerSocket = new ServerSocket();
                 listenerSocket.bind(myAddress);
+            } catch (IllegalArgumentException e) {
+                throw new NetworkManagerException("Failed to bind to address"
+                        + ": " + myAddress + ". Received error: " + e);
             } catch (IOException e) {
-                // Throw exceptions that are a subclass of IOException
-                // and/or RuntimeException.
-                // Maybe it can be a custom subclass.
-                // Also, intercept the IOException subclass corresponding to
-                // address is in-use error.
-                myLogger.info(e.getMessage());
-                System.exit(1);
+                throw new NetworkManagerException("Failed to create listener"
+                        + " socket. Received error: " + e);
             }
             
             while(true) {
@@ -104,22 +104,20 @@ public class NetworkManager {
                         } catch (SocketTimeoutException|EOFException e) {
                             // Sender stopped talking to us so we close
                             // socket resources and continue.
+                            myLogger.info(myAddress +" connection timeout.");
                         } catch (IOException e) {
-                            // ERROR2DO: think about whether or not to print
-                            // any further messages here.
-                            myLogger.info(myAddress + " received the following I/O error message while trying to read: " + e.getMessage());
-                            // e.printStackTrace();
+                            myLogger.info(myAddress + " received the "
+                                    + "following I/O error message while "
+                                    + "trying to read: " + e);
                         } catch (ClassNotFoundException e) {
-                            // ERROR2DO: figure out what to print in the case of
-                            // error being of type ClassNotFoundException.
+                            myLogger.info(myAddress + " failed to determine "
+                                    + "the class of a serialized object "
+                                    + "while trying to read: " + e);
                         }
                     });
                 } catch (IOException e) {
-                    // error during accept call (blocking call)
-                    // ERROR2DO: handle this properly
-                    // This is likely fatal, as we get an I/O error when trying
-                    // to accept some connection.
-                    System.exit(1);
+                    throw new NetworkManagerException(myAddress + " failed "
+                            + "to accept connections. Received error: " + e);
                 }
             }
         });
