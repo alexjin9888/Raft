@@ -52,9 +52,9 @@ public class PersistentState {
      public int lastApplied;
 
     /**
-     * List that maintains the running cumulative length of logs
+     * List that maintains the running log size in bytes
      */
-    private ArrayList<Integer> runningLogLengths;
+    private ArrayList<Integer> runningLogSizeInBytes;
 
     
     private Path currentTermPath;
@@ -74,7 +74,7 @@ public class PersistentState {
         this.votedFor = null;
         this.lastApplied = -1;
         this.log = new ArrayList<LogEntry>();
-        this.runningLogLengths = new ArrayList<Integer>();
+        this.runningLogSizeInBytes = new ArrayList<Integer>();
         
         Path baseDirPath = Paths.get(System.getProperty("user.dir"), myId);
         currentTermPath = Paths.get(baseDirPath.toString(), "current-term" + PS_EXT);
@@ -95,12 +95,12 @@ public class PersistentState {
                 
                 logFile = new RandomAccessFile(logFilePath.toString(), "rw");
                 String line;
-                int runningLogLength = 0;
+                int logSizeInBytes = 0;
                 while ((line = logFile.readLine()) != null) {
                     LogEntry logEntry = new LogEntry(line);
                     log.add(logEntry);
-                    runningLogLength += (logEntry.toString() + "\n").getBytes().length;
-                    runningLogLengths.add(runningLogLength);
+                    logSizeInBytes += (logEntry.toString() + "\n").getBytes().length;
+                    runningLogSizeInBytes.add(logSizeInBytes);
                 }
             } catch (IOException | NumberFormatException e) {
                 throw new PersistentStateException("Cannot successfully load "
@@ -111,9 +111,9 @@ public class PersistentState {
             try {
                 Files.createDirectories(baseDirPath);
                 writeOutFileContents(currentTermPath, Integer.toString(currentTerm));
-                writeOutFileContents(votedForPath, VOTED_FOR_SENTINEL_VALUE + votedFor);
+                writeOutFileContents(votedForPath, VOTED_FOR_SENTINEL_VALUE);
                 writeOutFileContents(lastAppliedPath, Integer.toString(lastApplied));
-                writeOutFileContents(logFilePath, stringifyLogs(log));
+                writeOutFileContents(logFilePath, stringifyLogEntries(log));
                 
                 logFile = new RandomAccessFile(logFilePath.toString(), "rw");
             } catch (IOException e) {
@@ -127,7 +127,7 @@ public class PersistentState {
     }
     
 
-    private String stringifyLogs(ArrayList<LogEntry> logEntries) {
+    private String stringifyLogEntries(ArrayList<LogEntry> logEntries) {
         return logEntries.stream()
                          .map(LogEntry::toString)
                          .collect(Collectors.joining("\n"));
@@ -135,7 +135,8 @@ public class PersistentState {
 
     
     /**
-     * Precondition: Cannot write `null` to file.
+     * Precondition: Cannot write out `null` to file. Some non-null sentinel
+     * value has to take its place instead.
      */
     private synchronized void writeOutFileContents(Path filePath, String contents) {
         try {
@@ -191,7 +192,7 @@ public class PersistentState {
         }
         
         try {
-            logFile.setLength(index == 0 ? 0 : runningLogLengths.get(index - 1));
+            logFile.setLength(index == 0 ? 0 : runningLogSizeInBytes.get(index - 1));
         } catch (IOException e) {
             throw new PersistentStateException("Cannot truncate logs. Received "
                     + "error: " + e);
@@ -209,13 +210,13 @@ public class PersistentState {
     public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {
         this.log.addAll(newEntries);
         
-        int currentLogLength = runningLogLengths.size() == 0 ? 0 : runningLogLengths.get(runningLogLengths.size() - 1);
+        int currentLogLength = runningLogSizeInBytes.size() == 0 ? 0 : runningLogSizeInBytes.get(runningLogSizeInBytes.size() - 1);
         
         
         
         for (LogEntry logEntry : newEntries) {
             byte[] logEntryBytes = (logEntry.toString() + "\n").getBytes();
-            runningLogLengths.add(currentLogLength + logEntryBytes.length);
+            runningLogSizeInBytes.add(currentLogLength + logEntryBytes.length);
             try {
                 logFile.write(logEntryBytes);
                 // `RandomAccessFile` doesn't maintain a buffer, so we don't need

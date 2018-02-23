@@ -17,7 +17,7 @@ public class RaftClient {
     /**
      * Amount of time to wait for a reply before we send another request.
      */
-    private static final int RETRY_TIMEOUT_MS = 5000;
+    private static final int RETRY_TIMEOUT_MS = 1000;
     
     /**
      * The address that I use to receive replies.
