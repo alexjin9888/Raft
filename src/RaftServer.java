@@ -3,6 +3,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Serializable;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.InetSocketAddress;
 import java.util.Iterator;
 import java.util.List;
@@ -33,8 +34,11 @@ import misc.PersistentState;
 import misc.PersistentStateException;
 import misc.AddressUtils;
 import misc.CheckingCancelTimerTask;
+import misc.CommandExecutor;
+import misc.CommandExecutorException;
 import misc.LogEntry;
 import misc.NetworkManager;
+import misc.NetworkManagerException;
 
 
 /**
@@ -133,7 +137,8 @@ public class RaftServer {
      * the current election term.
      */
     private Set<String> votedForMeSet;
-
+    
+    private CommandExecutor commandExecutor;
 
     private NetworkManager networkManager;
 
@@ -142,10 +147,6 @@ public class RaftServer {
      * client after applying the command of a log entry.
      */
     private HashMap<LogEntry, ClientRequest> outstandingClientRequestsMap;
-    /**
-     * Single thread manager that will execute the commands for us in order.
-     */
-    private ExecutorService inOrderCommandApplier;
     
     /**
      * Tracing and debugging logger;
@@ -193,13 +194,26 @@ public class RaftServer {
             commitIndex = this.persistentState.lastApplied;
        
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
-            inOrderCommandApplier = Executors.newSingleThreadExecutor();
             timeoutTimer = new Timer();
 
             this.role = null;
             transitionRole(Role.FOLLOWER);
 
+            commandExecutor = new CommandExecutor();
             networkManager = new NetworkManager(myAddress, this::handleSerializable);
+            
+            Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+                public void uncaughtException(Thread t, Throwable e) {
+                    if (e instanceof PersistentStateException
+                            || e instanceof CommandExecutorException
+                            || e instanceof NetworkManagerException) {
+                        myLogger.fatal(e);
+                        e.printStackTrace();
+                        System.exit(1);
+                    }
+                }
+            });
+ 
             logMessage("successfully booted");
         }
     }
@@ -481,6 +495,7 @@ public class RaftServer {
                         if (this.isCancelled) {
                             return;
                         }
+                        
                         transitionRole(Role.CANDIDATE);
                     }
                 }
@@ -566,28 +581,6 @@ public class RaftServer {
         }
     }
 
-    // Executes a given command by calling the system process
-    // Failures are ignored
-    private String execute(String command) {
-        try {
-            Process p = new ProcessBuilder("bash", "-c", command)
-                    .redirectErrorStream(true)
-                    .start();
-            
-            p.waitFor();
-            try (InputStream is = p.getInputStream();
-                      Scanner s = new Scanner(is).useDelimiter("\\A")) {
-                return s.hasNext() ? s.next() : "";
-            }
-        } catch (IOException e) {
-            // TODO: throw special fatal exception
-        } catch (InterruptedException e) {
-            // TODO: throw special fatal exception
-        }
-        
-        return "";
-    }
-
     // Wrapper method around setting of commitIndex
     private synchronized void updateCommitIndex(int newCommitIndex) {
         if (newCommitIndex <= this.commitIndex) {
@@ -595,9 +588,8 @@ public class RaftServer {
         }
         for (int i=commitIndex+1; i <= newCommitIndex; i++) {
             LogEntry logEntry = this.persistentState.log.get(i);
-            inOrderCommandApplier.submit(() -> {
-                String result = execute(logEntry.command);
-                synchronized(RaftServer.this) {                    
+            commandExecutor.execute(logEntry.command, (commandResult) -> {
+                synchronized(RaftServer.this) {              
                     this.persistentState.incrementLastApplied();
                     if (this.role!=Role.LEADER) {
                         return;
@@ -608,7 +600,7 @@ public class RaftServer {
                         return;
                     }
                     ClientReply reply =
-                            new ClientReply(clientRequest.commandId, myAddress, true, result);
+                            new ClientReply(clientRequest.commandId, myAddress, true, commandResult);
                                         
                     networkManager.sendSerializable(clientRequest.clientAddress, reply);
                     this.outstandingClientRequestsMap.remove(logEntry);

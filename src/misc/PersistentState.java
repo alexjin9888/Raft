@@ -23,6 +23,9 @@ import java.util.stream.Collectors;
 /**
  * Manages the persistent state of a Raft server.
  */
+
+// ERROR2DO: include lots of documentation re: the different cases in which
+// an unchecked PersistentStateException may be thrown.
 public class PersistentState {
     
     private static final String VOTED_FOR_SENTINEL_VALUE = "null";

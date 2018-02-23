@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -13,6 +14,7 @@ import java.util.HashMap;
 import java.util.Timer;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 
 import org.apache.logging.log4j.LogManager;
@@ -38,9 +40,7 @@ public class NetworkManager {
     
     private Timer removeWriteSocketTimer;
     
-    private ServerSocket listenerSocket;
-    
-    // Shared attributes and resources
+    // Attributes and resources for both read and write
     /**
      * Thread pool that we can use to send and receive messages on different
      * threads.
@@ -54,30 +54,41 @@ public class NetworkManager {
     private static final Logger myLogger = LogManager.getLogger();
     
     
-    public NetworkManager(InetSocketAddress myAddress, Consumer<Serializable> serializableHandler) {
+    public NetworkManager(InetSocketAddress myAddress, Consumer<Serializable> handleSerializableCb) {
+        this(myAddress, handleSerializableCb, null);
+    }
+    
+    // Only calls the `handleSerializableCb` callback function if there is a
+    // valid serializable object received by the server.
+    // ERROR2DO: Document that this class throws `NetworkManagerExceptions` in
+    // threads that it controls.
+    // ERROR2DO: Mention in comments: `ueh` can be used to handle any uncaught
+    // exceptions that calling handleSerializableCb might throw. `ueh` may also
+    // be used to handle uncaught NetworkManager exceptions when trying to bind
+    // to a port or while trying to accept a connection from any other server.
+    public NetworkManager(InetSocketAddress myAddress, Consumer<Serializable> handleSerializableCb, UncaughtExceptionHandler ueh) {
         addrToWriteSocketInfo = new HashMap<InetSocketAddress, WriteSocketInfo>();
         removeWriteSocketTimer = new Timer();
-        
-        try {
-            listenerSocket = new ServerSocket();
-            listenerSocket.bind(myAddress);
-        } catch (IOException e) {
-            // Throw exceptions that are a subclass of IOException
-            // and/or RuntimeException.
-            // Maybe it can be a custom subclass.
-            // Also, intercept the IOException subclass corresponding to
-            // address is in-use error.
-            myLogger.info(e.getMessage());
-            System.exit(1);
-        }
-        
-        networkIOService = Executors.newCachedThreadPool();
 
-        (new Thread(() -> {
+        Thread listenerThread = new Thread(() -> {
+            ServerSocket listenerSocket = null;
+            try {
+                listenerSocket = new ServerSocket();
+                listenerSocket.bind(myAddress);
+            } catch (IOException e) {
+                // Throw exceptions that are a subclass of IOException
+                // and/or RuntimeException.
+                // Maybe it can be a custom subclass.
+                // Also, intercept the IOException subclass corresponding to
+                // address is in-use error.
+                myLogger.info(e.getMessage());
+                System.exit(1);
+            }
+            
             while(true) {
                 try {
                     Socket socket = listenerSocket.accept();
-                    networkIOService.submit(() -> {
+                    networkIOService.execute(() -> {
                         // Uses one object input stream for the lifetime of
                         // the socket, which is generally the convention.
                         try (Socket readSocket = socket;
@@ -88,7 +99,7 @@ public class NetworkManager {
                             // I/O error or read timeout errors.
                             while (true) {
                                 // We block until a serializable object is read or an I/O error occurs.
-                                serializableHandler.accept((Serializable) ois.readObject());
+                                handleSerializableCb.accept((Serializable) ois.readObject());
                             }
                         } catch (SocketTimeoutException|EOFException e) {
                             // Sender stopped talking to us so we close
@@ -106,10 +117,28 @@ public class NetworkManager {
                 } catch (IOException e) {
                     // error during accept call (blocking call)
                     // ERROR2DO: handle this properly
+                    // This is likely fatal, as we get an I/O error when trying
+                    // to accept some connection.
                     System.exit(1);
                 }
             }
-        })).start();
+        });
+        
+        if (ueh == null) {
+            networkIOService = Executors.newCachedThreadPool();
+        } else {
+            networkIOService = Executors.newCachedThreadPool(new ThreadFactory() {
+                public Thread newThread(Runnable r) {
+                    final Thread t = new Thread(r);
+                    t.setUncaughtExceptionHandler(ueh);
+                    return t;
+                }
+            });
+            
+            listenerThread.setUncaughtExceptionHandler(ueh);
+        }
+        
+        listenerThread.start();
     }
     
     public synchronized void sendSerializable(InetSocketAddress recipientAddress, Serializable object) {
@@ -138,7 +167,7 @@ public class NetworkManager {
             }
         }
         final WriteSocketInfo writeSocketInfo = socketInfo; 
-        networkIOService.submit(() -> {
+        networkIOService.execute(() -> {
             try {
                 writeSocketInfo.oos.writeObject(objectCopy);
                 rescheduleRemoveWriteSocket(writeSocketInfo);
