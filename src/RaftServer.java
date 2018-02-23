@@ -30,9 +30,8 @@ import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
 import misc.PersistentState;
 import misc.PersistentStateException;
-import misc.addressParser;
+import misc.AddressUtils;
 import misc.CheckingCancelTimerTask;
-import misc.InvalidArgumentException;
 import misc.LogEntry;
 import misc.NetworkManager;
 
@@ -671,13 +670,12 @@ public class RaftServer {
         } else {
             allHostsStrings = args[0].split(",");
             for (int i=0; i<allHostsStrings.length; i++) {
-                try {
-                    serverAddressesMap.put("Server" + i, 
-                            addressParser.parse(allHostsStrings[i]));
-                } catch (InvalidArgumentException e) {
+                InetSocketAddress hostAddress = AddressUtils.parse(allHostsStrings[i]);
+                if (hostAddress == null) {
                     validArgs = false;
                     break;
                 }
+                serverAddressesMap.put("Server" + i, hostAddress);
             }
         }
         try {

@@ -114,10 +114,10 @@ public class PersistentState {
         } else {
             try {
                 Files.createDirectories(baseDirPath);
-                overwriteFileContents(currentTermPath, Integer.toString(currentTerm));
-                overwriteFileContents(votedForPath, VOTED_FOR_SENTINEL_VALUE + votedFor);
-                overwriteFileContents(lastAppliedPath, Integer.toString(lastApplied));
-                overwriteFileContents(logFilePath, stringifyLogs(log));
+                writeOutFileContents(currentTermPath, Integer.toString(currentTerm));
+                writeOutFileContents(votedForPath, VOTED_FOR_SENTINEL_VALUE + votedFor);
+                writeOutFileContents(lastAppliedPath, Integer.toString(lastApplied));
+                writeOutFileContents(logFilePath, stringifyLogs(log));
                 
                 logFile = new RandomAccessFile(logFilePath.toString(), "rw");
             } catch (IOException e) {
@@ -140,12 +140,8 @@ public class PersistentState {
     
     /**
      * Precondition: Cannot write `null` to file.
-     * TODO: see whether the precondition still holds with `Files.write`.
-     * @param data
-     * @param file
-     * @param append
      */
-    private synchronized void overwriteFileContents(Path filePath, String contents) {
+    private synchronized void writeOutFileContents(Path filePath, String contents) {
         try {
             // TODO: make sure the output is human-readable
             Files.write(filePath, contents.getBytes());
@@ -162,7 +158,7 @@ public class PersistentState {
      */
     public synchronized void setTerm(int currentTerm) {
         this.currentTerm = currentTerm;
-        overwriteFileContents(currentTermPath, Integer.toString(currentTerm));
+        writeOutFileContents(currentTermPath, Integer.toString(currentTerm));
     }
     
     public boolean logHasIndex(int index) {
@@ -176,7 +172,7 @@ public class PersistentState {
      */
     public synchronized void setVotedFor(String votedFor) {
         this.votedFor = votedFor;
-        overwriteFileContents(votedForPath, this.votedFor == null ? VOTED_FOR_SENTINEL_VALUE : this.votedFor);
+        writeOutFileContents(votedForPath, this.votedFor == null ? VOTED_FOR_SENTINEL_VALUE : this.votedFor);
     }
     
     /**
@@ -233,6 +229,6 @@ public class PersistentState {
      */
     public synchronized void incrementLastApplied() {
         this.lastApplied += 1;
-        overwriteFileContents(lastAppliedPath, Integer.toString(lastApplied));
+        writeOutFileContents(lastAppliedPath, Integer.toString(lastApplied));
     }
 }

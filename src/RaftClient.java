@@ -9,9 +9,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import messages.ClientReply;
 import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
-import misc.InvalidArgumentException;
 import misc.NetworkManager;
-import misc.addressParser;
+import misc.AddressUtils;
 
 public class RaftClient {
     
@@ -163,19 +162,19 @@ public class RaftClient {
         if (args.length != 2) {
             validArgs = false;
         } else {
-            try {
-                myAddress = addressParser.parse(args[0]);
-            } catch (InvalidArgumentException e) {
+            myAddress = AddressUtils.parse(args[0]);
+            if (myAddress == null) {
                 validArgs = false;
             }
+            
             allHostsStrings = args[1].split(",");
             for (int i=0; i<allHostsStrings.length; i++) {
-                try {
-                    serverAddresses.add(addressParser.parse(allHostsStrings[i]));
-                } catch (InvalidArgumentException e) {
+                InetSocketAddress hostAddress = AddressUtils.parse(allHostsStrings[i]);
+                if (hostAddress == null) {
                     validArgs = false;
                     break;
                 }
+                serverAddresses.add(hostAddress);
             }
         }
 
@@ -183,7 +182,6 @@ public class RaftClient {
             System.out.println("Please supply exactly two valid arguments");
             System.out.println(
                     "Usage: <myHostname:myPort> <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$>");
-            System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
         }
         

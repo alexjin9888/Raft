@@ -15,9 +15,6 @@ public class LogEntry implements Serializable {
     private final static Pattern pattern = Pattern.compile(
             "LogEntry \\[index=(\\d+), term=(\\d+), command=(.*)\\]");
 
-    private static int INDEX_GRP = 1;
-    private static int TERM_GRP = 2;
-    private static int COMMAND_GRP = 3;
     /**
      * @param index   see top of class file
      * @param command see top of class file
@@ -35,9 +32,9 @@ public class LogEntry implements Serializable {
             throw new PersistentStateException(
                     "Cannot parse log entry: " + stringifiedLogEntry);
         }
-        this.index = Integer.parseInt(m.group(INDEX_GRP));
-        this.term = Integer.parseInt(m.group(TERM_GRP));
-        this.command = m.group(COMMAND_GRP);
+        this.index = Integer.parseInt(m.group(1));
+        this.term = Integer.parseInt(m.group(2));
+        this.command = m.group(3);
     }
     
     @Override
