@@ -1,0 +1,19 @@
+Changes:
+
+(1) Exception handling
+    We divided fatal exceptions into 2 subclasses of RuntimeExceptions:
+    NetworkManagerException and PersistentStateException. This allows us to
+    throw specific exceptions further up and print more meaning error messages.
+
+(2) We combined all message-sending/receiving logic into a single NetworkManager
+    class. We no longer open and close a new socket for every message. Instead,
+    we keep a single socket open for every peer and reuse it by storing the
+    socket in a hash map.
+
+(3) We added synchronization to avoid race conditions. The locks are placed at
+    a coarse level (the class object level) to make reasoning easier. Currently,
+    we do not see any performance bottlenecks that require more fine-grained
+    synchronization.
+
+(4) Moved away from bytebuffer and used input/output-streams instead. The API
+    becomes much cleaner.
