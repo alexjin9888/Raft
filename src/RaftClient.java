@@ -45,7 +45,7 @@ public class RaftClient {
     private CheckingCancelTimerTask retryRequestTask;
         
     /**
-     * An instances that manages sending and receiving messages.
+     * A NetworkManager instance that manages sending and receiving messages.
      */
     private NetworkManager networkManager;
     
