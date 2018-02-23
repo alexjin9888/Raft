@@ -7,6 +7,9 @@ import java.util.TimerTask;
  * been cancelled.
  */
 public abstract class CheckingCancelTimerTask extends TimerTask {
+    /**
+     * True iff the cancel method has been previously called.
+     */
     public boolean isCancelled;
     
     public CheckingCancelTimerTask() {
