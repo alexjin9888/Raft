@@ -47,13 +47,7 @@ public class PersistentState {
      * (initialized to -1, increases monotonically)
      */
      public int lastApplied;
-        
-    /**
-     * Unique server identification and lookup ID for persistent state on disk
-     */
-    private String myId;
-    
-    
+
     /**
      * List that maintains the running cumulative length of logs
      */
@@ -65,8 +59,6 @@ public class PersistentState {
     private Path lastAppliedPath;    
     private RandomAccessFile logFile;
 
-    
-    
     /**
      * Attempt to load persistent state data from disk.
      * If the state does not exist on disk, initialize.
@@ -75,7 +67,6 @@ public class PersistentState {
      * than persistent state not existing on disk.
      */
     public PersistentState(String myId) {
-        this.myId = myId;
         this.currentTerm = 0;
         this.votedFor = null;
         this.lastApplied = -1;
@@ -88,11 +79,15 @@ public class PersistentState {
         lastAppliedPath = Paths.get(baseDirPath.toString(), "last-applied" + PS_EXT);
         Path logFilePath = Paths.get(baseDirPath.toString(), "log-entries" + PS_EXT);
      
+        // Testing for existence of server persistent state directory is
+        // sufficient to tell us whether persistent state for Raft server
+        // already exists.
+
         if (Files.isDirectory(baseDirPath)) {
             try {
                 currentTerm = Integer.parseInt(Files.readAllLines(currentTermPath).get(0));
                 String votedForReadValue = Files.readAllLines(votedForPath).get(0);
-                votedFor = votedForReadValue.equals(VOTED_FOR_SENTINEL_VALUE) ? null : votedForReadValue;
+                votedFor = votedForReadValue.equals(VOTED_FOR_SENTINEL_VALUE) ? null : votedForReadValue;                
                 lastApplied = Integer.parseInt(Files.readAllLines(lastAppliedPath).get(0));
                 
                 logFile = new RandomAccessFile(logFilePath.toString(), "rw");
@@ -105,8 +100,6 @@ public class PersistentState {
                     runningLogLengths.add(runningLogLength);
                 }
             } catch (IOException | NumberFormatException e) {
-                // TODO: add more logging
-                // e.g., consider catching on FileNotFoundException
                 throw new PersistentStateException("Cannot successfully load "
                         + "persistent state from path: " + baseDirPath + "."
                                 + "Received error: " + e);
@@ -176,6 +169,14 @@ public class PersistentState {
     }
     
     /**
+     * Increment the last applied index variable and persist state to disk.
+     */
+    public synchronized void incrementLastApplied() {
+        this.lastApplied += 1;
+        writeOutFileContents(lastAppliedPath, Integer.toString(lastApplied));
+    }
+    
+    /**
      * Truncate the log starting at specified index (inclusive).
      * Persist updated portion of log state to disk.
      * @param index start location of where we truncate
@@ -222,13 +223,5 @@ public class PersistentState {
                         + "disk. Received error: " + e);
             }
         }    
-    }
-
-    /**
-     * Increment the last applied index variable and persist state to disk.
-     */
-    public synchronized void incrementLastApplied() {
-        this.lastApplied += 1;
-        writeOutFileContents(lastAppliedPath, Integer.toString(lastApplied));
     }
 }

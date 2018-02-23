@@ -12,7 +12,7 @@ public class LogEntry implements Serializable {
     public int term; // term of the leader when it sent this log
     public String command; // To be executed on each server
     
-    private final static Pattern pattern = Pattern.compile(
+    private final static Pattern entryPattern = Pattern.compile(
             "LogEntry \\[index=(\\d+), term=(\\d+), command=(.*)\\]");
 
     /**
@@ -27,7 +27,7 @@ public class LogEntry implements Serializable {
     }
     
     public LogEntry(String stringifiedLogEntry) {
-        Matcher m = pattern.matcher(stringifiedLogEntry);
+        Matcher m = entryPattern.matcher(stringifiedLogEntry);
         if (!m.matches()) {
             throw new PersistentStateException(
                     "Cannot parse log entry: " + stringifiedLogEntry);

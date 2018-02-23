@@ -6,6 +6,7 @@ import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -565,38 +566,26 @@ public class RaftServer {
         }
     }
 
-    
-    
     // Executes a given command by calling the system process
     // Failures are ignored
     private String execute(String command) {
-        StringBuffer resultBuffer = new StringBuffer();
-
-        Process p = null;
         try {
-            p = Runtime.getRuntime().exec("bash -c " + command);
+            Process p = new ProcessBuilder("bash", "-c", command)
+                    .redirectErrorStream(true)
+                    .start();
+            
             p.waitFor();
             try (InputStream is = p.getInputStream();
-            InputStreamReader isr = new InputStreamReader(is);
-            BufferedReader br = new BufferedReader(isr)) {
-                String resultLine = "";           
-                while ((resultLine = br.readLine())!= null) {
-                    resultBuffer.append(resultLine + "\n");
-                }
+                      Scanner s = new Scanner(is).useDelimiter("\\A")) {
+                return s.hasNext() ? s.next() : "";
             }
         } catch (IOException e) {
-            logMessage("Running the client command " + command + " resulted in"
-                    + " an IOException " + e + " while executing.");
-            return e.toString();
+            // TODO: throw special fatal exception
         } catch (InterruptedException e) {
-            // Note: We currently don't call the interrupt method on threads.
-            // In the event that this thread is interrupted, we should log
-            // and continue.
-            logMessage("Thread was interrupted while waiting for the client"
-                    + " command " + command + " to finish executing");
+            // TODO: throw special fatal exception
         }
-
-        return resultBuffer.toString();
+        
+        return "";
     }
 
     // Wrapper method around setting of commitIndex
@@ -656,40 +645,32 @@ public class RaftServer {
      *               which the server will start a listener channel on
      */
     public static void main(String[] args) {
-        // A2DO: ensure that list of server addresses passed in is non-empty
-        //       not sure if we have to implement any extra checks to achieve this
-
         int myPortIndex = -1;
-        String[] allHostsStrings = null;
-        boolean validArgs = true;
-        HashMap<String, InetSocketAddress> serverAddressesMap = 
-                new HashMap<String, InetSocketAddress>();
-
-        if (args.length != 2) {
-            validArgs = false;
-        } else {
-            allHostsStrings = args[0].split(",");
-            for (int i=0; i<allHostsStrings.length; i++) {
-                InetSocketAddress hostAddress = AddressUtils.parse(allHostsStrings[i]);
-                if (hostAddress == null) {
-                    validArgs = false;
-                    break;
-                }
-                serverAddressesMap.put("Server" + i, hostAddress);
+        ArrayList<InetSocketAddress> serverAddresses = null;
+        
+        if (args.length == 2) {
+            serverAddresses = AddressUtils.parseAddresses(args[0]);
+            
+            try {
+                myPortIndex = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                myPortIndex = -1;
             }
         }
-        try {
-            myPortIndex = Integer.parseInt(args[1]);
-        } catch (NumberFormatException e) {
-            validArgs = false;
-        }
 
-        if (!validArgs) {
+        if (args.length != 2 || myPortIndex == -1 || serverAddresses == null
+                || myPortIndex < 0 || myPortIndex >= serverAddresses.size()) {
             System.out.println("Please supply exactly two valid arguments");
             System.out.println(
                     "Usage: <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$> <myAddressIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
+        }
+        
+        HashMap<String, InetSocketAddress> serverAddressesMap = new HashMap<String, InetSocketAddress>();
+        
+        for (int i = 0; i < serverAddresses.size(); i++) {
+            serverAddressesMap.put("Server" + i, serverAddresses.get(i));
         }
 
         System.setProperty("log4j.configurationFile", "./src/log4j2.xml");
