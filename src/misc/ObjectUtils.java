@@ -11,6 +11,11 @@ import java.io.Serializable;
  */
 public abstract class ObjectUtils {
     
+    /**
+     * Creates a clone of a serializable object.
+     * @param obj Serializable obejct to be cloned
+     * @return A cloned serializable object
+     */
     public static Serializable deepClone(Serializable obj) {
         return ObjectUtils.deserialize(ObjectUtils.serialize(obj));
     }
