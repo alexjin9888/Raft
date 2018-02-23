@@ -8,9 +8,13 @@ public class RequestVoteRequest extends RaftMessage {
      */
     private static final long serialVersionUID = 1L;
 
-    // index of candidate’s last log entry (§5.4)
+    /**
+     * index of candidate’s last log entry (§5.4)
+     */
     public int lastLogIndex;
-    // term of candidate’s last log entry (§5.4)
+    /**
+     * term of candidate’s last log entry (§5.4)
+     */
     public int lastLogTerm;
 
     /**

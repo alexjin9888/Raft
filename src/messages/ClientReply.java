@@ -3,7 +3,7 @@ import java.io.Serializable;
 import java.net.InetSocketAddress;
 
 /**
- * This class defines the message format of a client message.
+ * This class defines the message format of a reply to a client message.
  */
 public class ClientReply implements Serializable {
     /**
@@ -25,7 +25,7 @@ public class ClientReply implements Serializable {
      */
     public boolean success;
     /**
-     * Shell command to be executed
+     * Result of the shell command executed
      */
     public String result;
     

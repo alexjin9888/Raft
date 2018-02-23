@@ -13,13 +13,21 @@ public class AppendEntriesRequest extends RaftMessage {
      */
     private static final long serialVersionUID = 1L;
 
-    // index of log entry immediately preceding new ones
+    /**
+     * index of log entry immediately preceding new ones
+     */
     public int prevLogIndex;
-    // term of prevLogIndex entry
+    /**
+     * term of prevLogIndex entry
+     */
     public int prevLogTerm;
-    // log entries for the recipient to append (zero or more)
+    /**
+     * log entries for the recipient to append (zero or more)
+     */
     public ArrayList<LogEntry> entries;
-    // leader's commitIndex
+    /**
+     * leader's commitIndex
+     */
     public int leaderCommit;
     /**
      * @param serverId     see RaftMessage.java
