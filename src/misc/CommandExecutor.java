@@ -52,15 +52,17 @@ public class CommandExecutor {
 
                 p.waitFor();
                 try (InputStream is = p.getInputStream();
-                        Scanner s = new Scanner(is).useDelimiter("\\A")) {
+                        Scanner s = new Scanner(is)) {;
+                    s.useDelimiter("\\A");
                     result = s.hasNext() ? s.next() : "";
                 }
             } catch (IOException e) {
-                // TODO: throw special fatal exception
-                throw new CommandExecutorException("TODO");
+                throw new CommandExecutorException("Client command execution"
+                        + " failed. Received error: " + e);
                 // handleCommandResultCb.accept(new CommandExecutorException("TODO"), null);
             } catch (InterruptedException e) {
-                // TODO: throw special fatal exception
+                throw new CommandExecutorException("Client command execution"
+                        + " interrupted. Received error: " + e);
             }
 
             handleCommandResultCb.accept(result);
