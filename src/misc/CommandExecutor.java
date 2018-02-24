@@ -65,12 +65,13 @@ public class CommandExecutor {
                     result = s.hasNext() ? s.next() : "";
                 }
             } catch (IOException e) {
-                throw new CommandExecutorException("Client command execution"
-                        + " failed. Received error: " + e);
-                // handleCommandResultCb.accept(new CommandExecutorException("TODO"), null);
+                throw new CommandExecutorException("Client command <"
+                        + command + "> execution failed due to IOException. "
+                        + "Received error: " + e);
             } catch (InterruptedException e) {
-                throw new CommandExecutorException("Client command execution"
-                        + " interrupted. Received error: " + e);
+                throw new CommandExecutorException("Client command <"
+                        + command + "> execution failed due to "
+                        + "InterruptedException. Received error: " + e);
             }
 
             handleCommandResultCb.accept(result);
