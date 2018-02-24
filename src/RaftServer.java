@@ -42,10 +42,13 @@ import misc.NetworkManagerException;
 
 
 /**
+ * This class implements a simplified version of the Raft consensus protocol.
+ * https://raft.github.io/raft.pdf
  * Each server in the Raft cluster should create and maintain its own
- * Server instance. Each instance runs the Raft protocol.
- * COMMENT2DO: reword comment so that it better describes what this class represents.
- * Make the comment more direct.
+ * Server instance. Note that our implementation differs slightly from the
+ * Raft protocol presented in the link above:
+ * (1) We use 0-indexed schemes
+ * (2) We persist lastApplied in addition to the other two persistent states.
  */
 public class RaftServer {
     // To ensure that at most one thread accesses server state at any given
@@ -60,15 +63,15 @@ public class RaftServer {
     private static final int HEARTBEAT_TIMEOUT_MS = 1000;
 
     /**
-     * The minimum value of election timeout, a random variable with the
-     * discrete uniform distribution:
-     * [min election timeout, max election timeout - 1].
+     * The minimum value of election timeout, which is a random variable with
+     * the discrete uniform distribution:
+     * U[min election timeout, max election timeout].
      */
     private static final int MIN_ELECTION_TIMEOUT_MS = 3000;
     /**
-     * The maximum value of election timeout, a random variable with the
-     * discrete uniform distribution:
-     * [min election timeout, max election timeout - 1].
+     * The maximum value of election timeout, which is a random variable with
+     * the discrete uniform distribution:
+     * U[min election timeout, max election timeout].
      */
     private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
     

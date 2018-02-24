@@ -81,9 +81,7 @@ public class PersistentState {
     /**
      * Attempt to load persistent state data from disk.
      * If the state does not exist on disk, initialize with default values.
-     * @param myId See top of class file
-     * @throws PersistentStateException If the load fails for any reason other
-     * than persistent state not existing on disk.
+     * @param myId See top of class file.
      */
     public PersistentState(String myId) {
         this.currentTerm = 0;
