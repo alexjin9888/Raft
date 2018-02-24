@@ -42,13 +42,11 @@ import misc.NetworkManagerException;
 
 
 /**
- * This class implements a simplified version of the Raft consensus protocol.
- * https://raft.github.io/raft.pdf
+ * This class implements a simplified version of the Raft consensus protocol,
+ * and serves as a state machine for the protocol.
+ * For details on the Raft protocol, see https://raft.github.io/raft.pdf
  * Each server in the Raft cluster should create and maintain its own
- * Server instance. Note that our implementation differs slightly from the
- * Raft protocol presented in the link above:
- * (1) We use 0-indexed schemes
- * (2) We persist lastApplied in addition to the other two persistent states.
+ * RaftServer instance.
  */
 public class RaftServer {
     // To ensure that at most one thread accesses server state at any given
@@ -56,6 +54,11 @@ public class RaftServer {
     // Furthermore, if any code in this file accesses server state in a new
     // thread without using one of the synchronized methods, a synchronized
     // block is used with the lock being the RaftServer instance.
+    // 
+    // There are some instance variables whose value should be set by calling
+    // a private wrapper method within this class (search up the keyword
+    // `wrapper` in this file for details). These wrapper methods maintain
+    // invariants for the instance variables.
 
     /**
      * Time elapsed before we send out another round of heartbeat messages
@@ -65,13 +68,13 @@ public class RaftServer {
     /**
      * The minimum value of election timeout, which is a random variable with
      * the discrete uniform distribution:
-     * U[min election timeout, max election timeout].
+     * U([min election timeout, max election timeout]).
      */
     private static final int MIN_ELECTION_TIMEOUT_MS = 3000;
     /**
      * The maximum value of election timeout, which is a random variable with
      * the discrete uniform distribution:
-     * U[min election timeout, max election timeout].
+     * U([min election timeout, max election timeout]).
      */
     private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
     
@@ -120,19 +123,17 @@ public class RaftServer {
     private HashMap<String, ServerMetadata> peerMetadataMap;
 
     /**
-     * PersistentState instance is used to read and write server
-     * state that should be persisted onto disk.
+     * Persistent state manager.
      */
     private PersistentState persistentState;
 
     /**
-     * A Timer instance used for scheduling of both election timeout and
-     * heartbeat timeout.
+     * A Timer instance used for scheduling timeout tasks.
      */
     private Timer timeoutTimer;
 
     /**
-     * Operations to execute when timeout expires.
+     * Task to execute when timeout expires.
      */
     private CheckingCancelTimerTask timeoutTask;
 
@@ -150,7 +151,7 @@ public class RaftServer {
     private Role role;
 
     /**
-     * index of highest log entry known to be committed 
+     * Index of highest log entry known to be committed. 
      * (initialized to index of last applied log entry, increases monotonically)
      */
     private int commitIndex;
@@ -162,12 +163,12 @@ public class RaftServer {
     private Set<String> votedForMeSet;
     
     /**
-     * CommandExecutor instance used to handle and execute client requests.
+     * Bash command execution manager.
      */
     private CommandExecutor commandExecutor;
 
     /**
-     * A NetworkManager instance that manages sending and receiving messages.
+     * A network I/O manager that manages the sending and receiving of messages.
      */
     private NetworkManager networkManager;
 
@@ -194,8 +195,8 @@ public class RaftServer {
         // server carry out the Raft protocol. One thread is a timeout tasks
         // executor thread (see Timer initialization below), another thread is a
         // command executor thread (see ExecutorService initialization below),
-        // and another thread is a connections acceptor thread (see
-        // NetworkManager initialization).
+        // and another thread is a connections listener thread (see
+        // NetworkManager initialization below).
         
         synchronized(RaftServer.this) {
             this.myId = myId;
@@ -218,13 +219,14 @@ public class RaftServer {
             
             Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
                 public void uncaughtException(Thread t, Throwable e) {
-                    if (e instanceof PersistentStateException
-                            || e instanceof CommandExecutorException
-                            || e instanceof NetworkManagerException) {
-                        myLogger.fatal(e);
-                        e.printStackTrace();
-                        System.exit(1);
-                    }
+                    // We are especially interested in uncaught exceptions
+                    // that are instances of PersistentStateException,
+                    // CommandExecutorException, and NetworkManagerException.
+                    // However, we generally want to die if any thread
+                    // experiences an uncaught exception.
+                    myLogger.fatal(e);
+                    e.printStackTrace();
+                    System.exit(1);
                 }
             });
             
@@ -240,17 +242,17 @@ public class RaftServer {
             this.role = null;
             transitionRole(Role.FOLLOWER);
 
-            commandExecutor = new CommandExecutor();
-            networkManager = new NetworkManager(myAddress, this::handleSerializable);
+            commandExecutor = new CommandExecutor(null);
+            networkManager = new NetworkManager(myAddress, this::handleSerializable, null);
  
             logMessage("successfully booted");
         }
     }
 
     /**
-     * Processes an incoming message and conditionally sends a reply depending
-     * on type of message.
-     * @param object incoming message
+     * Processes an incoming serializable object and conditionally sends a reply
+     * depending on type of object.
+     * @param object incoming serializable object
      */
     public synchronized void handleSerializable(Serializable object) {
         logMessage("Received " + object);
@@ -325,7 +327,7 @@ public class RaftServer {
 
     /**
      * Processes a valid AppendEntries request from a leader and sends a reply.
-     * @param request data corresponding to AppendEntries request
+     * @param request data corresponding to AppendEntries request.
      */
     private synchronized void handleAppendEntriesRequest(AppendEntriesRequest request) {
         // If we were a leader, we should have downgraded to follower
@@ -486,8 +488,9 @@ public class RaftServer {
     }
 
     /**
-     * Wrapper around role assignment that:
-     * (1) changes the role of the server
+     * Wrapper method around role assignment that:
+     * (1) changes the role of the server, cancelling all behavior associated
+     *     with the old role.
      * (2) runs initial behavior corresponding to new role, even if the new role
      *     is the same as the old one.
      * 
@@ -497,7 +500,7 @@ public class RaftServer {
      * * Candidate -> Candidate :: starts a new election.
      * 
      * Precondition: timeoutTask timer and persistentState state have been init.
-     * @param role (new) role that the server instance transitions to. 
+     * @param role role that the server instance transitions to. 
      */
     private synchronized void transitionRole(Role role) {
         // The defined transitions above allow us to put/contain all the Raft
@@ -612,9 +615,10 @@ public class RaftServer {
     }
 
     /**
-     * Wrapper method around setting of commitIndex.
-     * @param newCommitIndex new commitIndex that we want to update 
-     * commitIndex to.
+     * Wrapper method around setting of commitIndex. If commitIndex is different
+     * than the old commitIndex, then we schedule some commands to be applied
+     * and conditionally service outstanding client requests.
+     * @param newCommitIndex new value for commitIndex
      */
     private synchronized void updateCommitIndex(int newCommitIndex) {
         if (newCommitIndex <= this.commitIndex) {
@@ -645,8 +649,8 @@ public class RaftServer {
     }
     
     /**
-     * Wrapper around current term setter that enforces some invariants
-     * relating to updating our knowledge of the current term.
+     * Wrapper around current term setter that enforces invariants relating to
+     * updating our knowledge of the current term.
      * @param newTerm new term that we want to update the current term to.
      */
     private synchronized void updateTerm(int newTerm) {
@@ -666,10 +670,12 @@ public class RaftServer {
 
     /**
      * Creates+runs a server instance that follows the Raft protocol.
-     * @param args args[0] is a comma-delimited ports list (0-indexed)
-     *             args[1] is a port index to determine the port for
-     *               which the server will start a listener channel on
+     * @param args args[0] is a list of comma-delimited server addresses and
+     *             ports formatted as hostname0:port0,hostname1:port1
+     *             args[1] is an index into the list above (list is 0-indexed)
+     *             to get our server address
      */
+    
     public static void main(String[] args) {
         int myPortIndex = -1;
         ArrayList<InetSocketAddress> serverAddresses = null;
@@ -680,7 +686,7 @@ public class RaftServer {
             try {
                 myPortIndex = Integer.parseInt(args[1]);
             } catch (NumberFormatException e) {
-                myPortIndex = -1;
+                // Keep `myPortIndex` value as is.
             }
         }
 

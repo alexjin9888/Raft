@@ -1,0 +1,22 @@
+(1) Exception handling
+    We dealt with fatal and non-fatal exceptions more carefully. We created an
+    unchecked exceptions subclass for each general-purpose/auxiliary class, and
+    threw class-specific exceptions anytime a fatal error ocurred. For
+    non-fatal exceptions, we generally logged them and made sure that enough
+    helpful information was included within the log messages.
+(2) Information hiding
+    We hid from the Raft state machine class (RaftServer) all network I/O logic
+    by moving that logic to the NetworkManager class. In the RaftServer class,
+    we wrote the timeout timer logic in a way where it could be put/contained
+    in one method (see RaftServer transitionRole method).
+(3) Synchronization
+    We used coarse synchronization to avoid race conditions. We always lock
+    the class instance's lock for the duration of any instance method call in
+    order to make reasoning about concurrency easier. In order to ensure that
+    this is still performant, we make sure that there is no lock acquired when
+    we are performing significant network I/O or executing a bash command.
+(4) Implementation
+    We no longer open and close a new socket for every message. Instead,
+    we reuse the sockets. We also moved away from touching the ByteBuffer class
+    and used input/output streams instead so that the implementation logic
+    is less convoluted.
