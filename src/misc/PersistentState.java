@@ -20,6 +20,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  * Manages a Raft server's persistent state, which allows for state recovery
  * after server termination.
@@ -76,6 +79,12 @@ public class PersistentState {
      * containing all log entries.
      */
     private RandomAccessFile logFile;
+    
+    /**
+     * Tracing and debugging logger;
+     * see: https://logging.apache.org/log4j/2.x/manual/api.html
+     */
+    private static final Logger myLogger = LogManager.getLogger();
 
     /**
      * Attempt to load persistent state data from disk. If we cannot load, then
@@ -124,7 +133,11 @@ public class PersistentState {
                         + "persistent state from path: " + baseDirPath + "."
                                 + "Received exception: " + e);
             }
+            myLogger.debug("Successfully loaded existing state on disk for " +
+                    myId);
         } else {
+            myLogger.info(myId + " does not have any existing state on disk. "
+                    + "Creating persistent state for the server instance.");
             try {
                 Files.createDirectories(baseDirPath);
                 writeOutFileContents(currentTermPath, Integer.toString(currentTerm));

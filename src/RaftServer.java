@@ -57,7 +57,7 @@ public class RaftServer {
     // 
     // There are some instance variables whose value should be set by calling
     // a private wrapper method within this class (search up the keyword
-    // `wrapper` in this file for details). These wrapper methods maintain
+    // `wrapper` in this file for details). These wrapper methods help maintain
     // invariants for the instance variables.
 
     /**

@@ -124,6 +124,9 @@ public class NetworkManager {
                             myLogger.debug(socket.getRemoteSocketAddress() + 
                                     " has stopped transmitting data to us. "
                                     + "Received exception: " + e);
+                        } catch (StreamCorruptedException e) {
+                            myLogger.info(myAddress + " received bytes that "
+                                    + "could not be interpreted as an object");
                         } catch (IOException e) {
                             myLogger.info(myAddress + " received the "
                                     + "following I/O exception while trying to " 
