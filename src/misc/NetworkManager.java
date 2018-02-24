@@ -126,8 +126,9 @@ public class NetworkManager {
                         } catch (SocketTimeoutException|EOFException e) {
                             // Sender stopped talking to us so we close
                             // socket resources and continue.
-                            myLogger.debug(myAddress +" connection timeout "
-                                    + "or end of file reached.");
+                            myLogger.debug(socket.getInetAddress() + 
+                                    " has stopped transmitting data to us. "
+                                    + "Received error: " + e);
                         } catch (IOException e) {
                             myLogger.info(myAddress + " received the "
                                     + "following I/O error message while "
