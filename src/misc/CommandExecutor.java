@@ -60,7 +60,7 @@ public class CommandExecutor {
 
                 p.waitFor();
                 try (InputStream is = p.getInputStream();
-                        Scanner s = new Scanner(is)) {;
+                        Scanner s = new Scanner(is)) {
                     s.useDelimiter("\\A");
                     result = s.hasNext() ? s.next() : "";
                 }

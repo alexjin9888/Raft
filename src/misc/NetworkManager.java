@@ -8,6 +8,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.io.StreamCorruptedException;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -72,24 +73,33 @@ public class NetworkManager {
         this(myAddress, handleSerializableCb, null);
     }
     
+    /**
+     * Instance of this class can throw NetworkManagerException in the threads
+     * that it controls.
+     * D2DO: complete this
     // Only calls the `handleSerializableCb` callback function if there is a
     // valid serializable object received by the server.
-    // ERROR2DO: Document that this class throws `NetworkManagerExceptions` in
-    // threads that it controls.
     // ERROR2DO: Mention in comments: `ueh` can be used to handle any uncaught
     // exceptions that calling handleSerializableCb might throw. `ueh` may also
     // be used to handle uncaught NetworkManager exceptions when trying to bind
     // to a port or while trying to accept a connection from any other server.
+     * @param myAddress My server address
+     * @param handleSerializableCb 
+     * @param ueh 
+     */
     public NetworkManager(InetSocketAddress myAddress, Consumer<Serializable> handleSerializableCb, UncaughtExceptionHandler ueh) {
         addrToWriteSocketInfo = new HashMap<InetSocketAddress, WriteSocketInfo>();
         removeWriteSocketTimer = new Timer();
 
+        @SuppressWarnings("resource")
+        // We suppress warnings for not closing listenerSocket because any
+        // IOException is fatal and causes the listener thread to terminate.
         Thread listenerThread = new Thread(() -> {
             ServerSocket listenerSocket = null;
             try {
                 listenerSocket = new ServerSocket();
                 listenerSocket.bind(myAddress);
-            } catch (IllegalArgumentException e) {
+            } catch (BindException e) {
                 throw new NetworkManagerException("Failed to bind to address"
                         + ": " + myAddress + ". Received error: " + e);
             } catch (IOException e) {
@@ -116,15 +126,25 @@ public class NetworkManager {
                         } catch (SocketTimeoutException|EOFException e) {
                             // Sender stopped talking to us so we close
                             // socket resources and continue.
-                            myLogger.info(myAddress +" connection timeout.");
+                            myLogger.debug(myAddress +" connection timeout "
+                                    + "or end of file reached.");
                         } catch (IOException e) {
                             myLogger.info(myAddress + " received the "
                                     + "following I/O error message while "
                                     + "trying to read: " + e);
                         } catch (ClassNotFoundException e) {
-                            myLogger.info(myAddress + " failed to determine "
-                                    + "the class of a serialized object "
-                                    + "while trying to read: " + e);
+                            // Our Raft peers will generally send us
+                            // serializable objects for which we have class
+                            // templates for, unless they are running outdated
+                            // versions of our code.
+                            // If a malicious client who talks to one of the
+                            // servers in the cluster send over a serializable
+                            // object for which we don't have a class template
+                            // for, report this and continue.
+                            myLogger.info(myAddress + " failed to match the "
+                                    + "received serializable object with a "
+                                    + "known class template. Received error:"
+                                    + " " + e);
                         }
                     });
                 } catch (IOException e) {

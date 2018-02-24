@@ -63,15 +63,15 @@ public class RaftServer {
     private static final int HEARTBEAT_TIMEOUT_MS = 1000;
 
     /**
-     * The minimum value of election timeout, a random variable with the
-     * discrete uniform distribution:
-     * [min election timeout, max election timeout - 1].
+     * The minimum value of election timeout, which is a random variable with
+     * the discrete uniform distribution:
+     * U[min election timeout, max election timeout].
      */
     private static final int MIN_ELECTION_TIMEOUT_MS = 3000;
     /**
-     * The maximum value of election timeout, a random variable with the
-     * discrete uniform distribution:
-     * [min election timeout, max election timeout - 1].
+     * The maximum value of election timeout, which is a random variable with
+     * the discrete uniform distribution:
+     * U[min election timeout, max election timeout].
      */
     private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
     
