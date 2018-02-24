@@ -1,4 +1,5 @@
 import java.io.Serializable;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Scanner;
@@ -9,9 +10,16 @@ import java.util.concurrent.ThreadLocalRandom;
 import messages.ClientReply;
 import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
+import misc.CommandExecutorException;
 import misc.NetworkManager;
+import misc.NetworkManagerException;
+import misc.PersistentStateException;
 import misc.AddressUtils;
 
+/**
+ * A Raft client class through which programs can request commands to be
+ * sent, executed and replicated across a Raft cluster.
+ */
 public class RaftClient {
     
     /**
@@ -39,8 +47,14 @@ public class RaftClient {
      */
     private Timer retryRequestTimer;
 
+    /**
+     * A wrapped TimerTask object that allows checking of task cancellation.
+     */
     private CheckingCancelTimerTask retryRequestTask;
         
+    /**
+     * A NetworkManager instance that manages sending and receiving messages.
+     */
     private NetworkManager networkManager;
     
     /**
@@ -66,14 +80,28 @@ public class RaftClient {
             commandReader = new Scanner(System.in);
             outstandingRequest = null;
             numCommandsRead = 0;
+            
             retryRequestTimer = new Timer();
 
-            networkManager = new NetworkManager(this.myAddress, this::handleSerializable);
-            
+            networkManager = new NetworkManager(this.myAddress,
+                    this::handleSerializable, new UncaughtExceptionHandler() {
+                public void uncaughtException(Thread t, Throwable e) {
+                    if (e instanceof NetworkManagerException) {
+                        System.out.println(e);
+                        e.printStackTrace();
+                        System.exit(1);
+                    }
+                }
+            });
             waitForAndProcessInput();
         }
     }
     
+    /**
+     * A callback method that is executed after our network manager receives
+     * a message.
+     * @param object A serializable object we received
+     */
     public synchronized void handleSerializable(Serializable object) {
         if (!(object instanceof ClientReply)) {
             System.out.println("Don't know how to handle the serializable object: " + object);
@@ -100,9 +128,9 @@ public class RaftClient {
     }
     
     /**
-     * Sends the outstanding request containing the command to-be-executed and
-     * periodically retries the request in the event that we don't receive a
-     * reply.
+     * Sends the outstanding request containing the command to-be-executed
+     * and periodically retries the request in the event that we don't
+     * receive a reply.
      * Precondition: The client's outstanding request is not null. 
      */
     private synchronized void sendRetryingRequest() {
@@ -135,6 +163,10 @@ public class RaftClient {
         retryRequestTimer.scheduleAtFixedRate(retryRequestTask, RETRY_TIMEOUT_MS, RETRY_TIMEOUT_MS);
     }
  
+    /**
+     * A method that prompts for a use input. Sends it to the Raft cluster
+     * and blocks until we get a reply (retries indefinitely).
+     */
     private synchronized void waitForAndProcessInput() {
         System.out.println("Please enter a bash command:");
         String command = commandReader.nextLine();
@@ -143,6 +175,13 @@ public class RaftClient {
         sendRetryingRequest();
   }
     
+    /**
+     * Creates+runs a client instance that can communicate with a Raft
+     * cluster.
+     * @param args args[0] is my address port formatted as <address:port>
+     *             args[1] is a list of comma-delimited server addresses and
+     *             ports formatted as [address:port].
+     */
     public static void main(String[] args) {        
         InetSocketAddress myAddress = null;
         ArrayList<InetSocketAddress> serverAddresses = null;
@@ -158,7 +197,9 @@ public class RaftClient {
                     "Usage: <myHostname:myPort> <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$>");
             System.exit(1);
         }
-        
+
+        // Java doesn't like calling constructors without an
+        // assignment to a variable, even if that variable is not used.
         RaftClient client = new RaftClient(myAddress, serverAddresses);
     }
 }

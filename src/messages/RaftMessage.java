@@ -12,8 +12,14 @@ public abstract class RaftMessage implements Serializable {
      */
     private static final long serialVersionUID = 1L;
 
-    public String serverId; // ID of the server sending this message
-    public int term; // currentTerm of the sender
+    /**
+     * ID of the server sending this message
+     */
+    public String serverId;
+    /**
+     * currentTerm of the sender
+     */
+    public int term;
     
     
     /**

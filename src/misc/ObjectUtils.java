@@ -11,14 +11,20 @@ import java.io.Serializable;
  */
 public abstract class ObjectUtils {
     
+    /**
+     * Creates a clone of a serializable object.
+     * @param obj Serializable obejct to be cloned
+     * @return A cloned serializable object
+     */
     public static Serializable deepClone(Serializable obj) {
         return ObjectUtils.deserialize(ObjectUtils.serialize(obj));
     }
 
     /**
      * Serializes an serializable object into a sequence of bytes.
-     * @param object       object to be serialized
-     * @return             a byte array representing the serialized object
+     * @param object Object to be serialized.
+     * @return A byte array representing the serialized object. In the case
+     * of failure, return null.
      */
     private static byte[] serialize(Serializable object) {
         byte[] objectBytes;
@@ -37,23 +43,19 @@ public abstract class ObjectUtils {
     
     /**
      * Deserializes a sequence of bytes into a serializable object.
-     * @param objectBytes  a byte array to be deserialized
-     * @return             an object created from deserializing the byte array
+     * @param objectBytes a byte array to be deserialized.
+     * @return an object created from deserializing the byte array. In the
+     * case of failure, return null.
      */
     private static Serializable deserialize(byte[] objectBytes) {
         Object object;
-
 
         try (ByteArrayInputStream bais = new ByteArrayInputStream(objectBytes);
                  ObjectInputStream ois = new ObjectInputStream(bais)) {
             object = ois.readObject();
         } catch (ClassNotFoundException e) {
-            // ERROR2DO: figure out proper error-handling for this
-            // also log something that is informative
             object = null;
-            e.printStackTrace();
         } catch (IOException e) {
-            // ERROR2DO: see above
             object = null;
         }
         

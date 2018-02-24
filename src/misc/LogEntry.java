@@ -8,10 +8,28 @@ import java.util.regex.Pattern;
  * A log entry in a server's command log.
  */
 public class LogEntry implements Serializable {
-    public int index; // index of log entry in the log
-    public int term; // term of the leader when it sent this log
-    public String command; // To be executed on each server
+    /**
+     * Class versioning to support instance serialization/deserialization
+     */
+    private static final long serialVersionUID = 1L;
     
+    /**
+     * Index of log entry in the log.
+     */
+    public int index;
+    /**
+     * Term of the leader when it sent this log.
+     */
+    public int term;
+    /**
+     * Command to be executed on each server.
+     */
+    public String command;
+    
+    /**
+     * A Pattern instance that contains the regular expression used to parse
+     * a log entry string.
+     */
     private final static Pattern entryPattern = Pattern.compile(
             "LogEntry \\[index=(\\d+), term=(\\d+), command=(.*)\\]");
 
@@ -26,6 +44,11 @@ public class LogEntry implements Serializable {
         this.command = command;
     }
     
+    /**
+     * An alternative constructor that populates a LogEntry instance by
+     * parsing a string representation of a log entry.
+     * @param stringifiedLogEntry String that represents a log entry.
+     */
     public LogEntry(String stringifiedLogEntry) {
         Matcher m = entryPattern.matcher(stringifiedLogEntry);
         if (!m.matches()) {
@@ -47,6 +70,10 @@ public class LogEntry implements Serializable {
     public boolean equals(Object obj) {
         if (obj == null)
             return false;
+        
+        if (!(obj instanceof LogEntry)) {
+            return false;
+        }
         
         LogEntry other = (LogEntry) obj;
         return this.index == other.index && this.term == other.term;

@@ -21,16 +21,20 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Manages the persistent state of a Raft server.
+ * Each Raft server will instantiate an instance of this class to persist
+ * data to disk. Methods in this class ensures atomic changes to the server's
+ * persistent state and allows for recovery after crashes.
  */
-
-// ERROR2DO: include lots of documentation re: the different cases in which
-// an unchecked PersistentStateException may be thrown.
 public class PersistentState {
     
+    /**
+     * Value representing that the server has not voted for anyone for the
+     * current election term.
+     */
     private static final String VOTED_FOR_SENTINEL_VALUE = "null";
-    
-    // Extension used for persistent state files
+    /**
+     * Extension used for persistent state files
+     */
     private static final String PS_EXT = ".log";
     
     /**
@@ -49,25 +53,35 @@ public class PersistentState {
      * index of highest log entry applied to state machine
      * (initialized to -1, increases monotonically)
      */
-     public int lastApplied;
+    public int lastApplied;
 
     /**
-     * List that maintains the running log size in bytes
+     * List that maintains the cumulative running log size in bytes
      */
     private ArrayList<Integer> runningLogSizeInBytes;
 
-    
+    /**
+     * Path to the file that contains the value of currentTerm.
+     */
     private Path currentTermPath;
+    /**
+     * Path to the file that contains the value of votedFor.
+     */
     private Path votedForPath;
+    /**
+     * Path to the file that contains the value of lastApplied.
+     */
     private Path lastAppliedPath;    
+    /**
+     * A RandomAccessFile instance that points to the file containing all
+     * log entries.
+     */
     private RandomAccessFile logFile;
 
     /**
      * Attempt to load persistent state data from disk.
-     * If the state does not exist on disk, initialize.
-     * @param myId See top of class file
-     * @throws PersistentStateException If the load fails for any reason other
-     * than persistent state not existing on disk.
+     * If the state does not exist on disk, initialize with default values.
+     * @param myId See top of class file.
      */
     public PersistentState(String myId) {
         this.currentTerm = 0;
@@ -127,20 +141,29 @@ public class PersistentState {
     }
     
 
+    /**
+     * Stringifies a list of log entries and adds the newline character "\n"
+     * between each log entry.
+     * @param logEntries A list of log entries to stringify.
+     * @return String version of the list of log entries deliminated by the
+     * newline character.
+     */
     private String stringifyLogEntries(ArrayList<LogEntry> logEntries) {
         return logEntries.stream()
                          .map(LogEntry::toString)
                          .collect(Collectors.joining("\n"));
     }
 
-    
     /**
+     * Writes a string to disk. Throws PersistentStateException upon failure
+     * because our persistent state is no longer consistent.
      * Precondition: Cannot write out `null` to file. Some non-null sentinel
      * value has to take its place instead.
+     * @param filePath Path to which we write the string.
+     * @param contents String to write.
      */
     private synchronized void writeOutFileContents(Path filePath, String contents) {
         try {
-            // TODO: make sure the output is human-readable
             Files.write(filePath, contents.getBytes());
         } catch (IOException e) {
             throw new PersistentStateException("Cannot persist to file path: "
@@ -151,13 +174,16 @@ public class PersistentState {
     /**
      * Set current term and then write to persistent state on disk.
      * @param currentTerm See top of class file
-     * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void setTerm(int currentTerm) {
         this.currentTerm = currentTerm;
         writeOutFileContents(currentTermPath, Integer.toString(currentTerm));
     }
     
+    /**
+     * @param index Index to check if we have a log corresponding to.
+     * @return True iff our log contains a log entry at the given index.
+     */
     public boolean logHasIndex(int index) {
         return index >= 0 && index < this.log.size();
     }
@@ -165,7 +191,6 @@ public class PersistentState {
     /**
      * Set id of server you voted for and then write to persistent state on disk
      * @param votedFor See top of class file
-     * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void setVotedFor(String votedFor) {
         this.votedFor = votedFor;
@@ -184,7 +209,6 @@ public class PersistentState {
      * Truncate the log starting at specified index (inclusive).
      * Persist updated portion of log state to disk.
      * @param index start location of where we truncate
-     * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void truncateAt(int index) {
         if (!logHasIndex(index)) {
@@ -194,8 +218,8 @@ public class PersistentState {
         try {
             logFile.setLength(index == 0 ? 0 : runningLogSizeInBytes.get(index - 1));
         } catch (IOException e) {
-            throw new PersistentStateException("Cannot truncate logs. Received "
-                    + "error: " + e);
+            throw new PersistentStateException("Cannot perform truncate op. for"
+                + " logs. Received error: " + e);
         }
 
         this.log.subList(index, this.log.size()).clear();
@@ -205,15 +229,12 @@ public class PersistentState {
      * Append new entries to log.
      * Persist updated portion of log state to disk.
      * @param newEntry log entry to be appended
-     * @throws PersistentStateException If the state fails to persist to disk
      */
     public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {
         this.log.addAll(newEntries);
         
         int currentLogLength = runningLogSizeInBytes.size() == 0 ? 0 : runningLogSizeInBytes.get(runningLogSizeInBytes.size() - 1);
-        
-        
-        
+
         for (LogEntry logEntry : newEntries) {
             byte[] logEntryBytes = (logEntry.toString() + "\n").getBytes();
             runningLogSizeInBytes.add(currentLogLength + logEntryBytes.length);
@@ -222,9 +243,8 @@ public class PersistentState {
                 // `RandomAccessFile` doesn't maintain a buffer, so we don't need
                 // to flush.
             } catch (IOException e) {
-                // TODO: more specific exception catch?
-                throw new PersistentStateException("Cannot persist logs to "
-                        + "disk. Received error: " + e);
+                throw new PersistentStateException("Cannot persist new "
+                        + "log  entries to disk. Received error: " + e);
             }
         }    
     }

@@ -2,10 +2,13 @@ package misc;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InvalidClassException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.io.StreamCorruptedException;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -20,13 +23,21 @@ import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+/**
+ * Server and client programs use this class to manager their networking
+ * connections to send and receive messages.
+ */
 public class NetworkManager {
     
-    // Amount of time elapsed without reading from or writing to a socket
-    // before we decide to close the socket.
+    /**
+     * Amount of time elapsed without reading from or writing to a socket
+     * before we decide to close the socket.
+     */
     private static final int READ_WRITE_TIMEOUT_MS = 300000;
     
-    // Sender-specific attributes and resources
+    /**
+     * Sender-specific attributes and resources
+     */
     class WriteSocketInfo {
         InetSocketAddress address;
         Socket socket;
@@ -34,10 +45,14 @@ public class NetworkManager {
         CheckingCancelTimerTask removeSocketTask;
     }
     /**
-     * Map that we use to lookup socket info. for sending messages.
+     * Map that we use to lookup socket info for sending messages.
      */
     private HashMap<InetSocketAddress, WriteSocketInfo> addrToWriteSocketInfo;
     
+    /**
+     * Timer instance used to schedule a removal of write socket after
+     * READ_WRITE_TIMEOUT_MS.
+     */
     private Timer removeWriteSocketTimer;
     
     // Attributes and resources for both read and write
@@ -58,31 +73,38 @@ public class NetworkManager {
         this(myAddress, handleSerializableCb, null);
     }
     
+    /**
+     * Instance of this class can throw NetworkManagerException in the threads
+     * that it controls.
+     * D2DO: complete this
     // Only calls the `handleSerializableCb` callback function if there is a
     // valid serializable object received by the server.
-    // ERROR2DO: Document that this class throws `NetworkManagerExceptions` in
-    // threads that it controls.
     // ERROR2DO: Mention in comments: `ueh` can be used to handle any uncaught
     // exceptions that calling handleSerializableCb might throw. `ueh` may also
     // be used to handle uncaught NetworkManager exceptions when trying to bind
     // to a port or while trying to accept a connection from any other server.
+     * @param myAddress My server address
+     * @param handleSerializableCb 
+     * @param ueh 
+     */
     public NetworkManager(InetSocketAddress myAddress, Consumer<Serializable> handleSerializableCb, UncaughtExceptionHandler ueh) {
         addrToWriteSocketInfo = new HashMap<InetSocketAddress, WriteSocketInfo>();
         removeWriteSocketTimer = new Timer();
 
+        @SuppressWarnings("resource")
+        // We suppress warnings for not closing listenerSocket because any
+        // IOException is fatal and causes the listener thread to terminate.
         Thread listenerThread = new Thread(() -> {
             ServerSocket listenerSocket = null;
             try {
                 listenerSocket = new ServerSocket();
                 listenerSocket.bind(myAddress);
+            } catch (BindException e) {
+                throw new NetworkManagerException("Failed to bind to address"
+                        + ": " + myAddress + ". Received error: " + e);
             } catch (IOException e) {
-                // Throw exceptions that are a subclass of IOException
-                // and/or RuntimeException.
-                // Maybe it can be a custom subclass.
-                // Also, intercept the IOException subclass corresponding to
-                // address is in-use error.
-                myLogger.info(e.getMessage());
-                System.exit(1);
+                throw new NetworkManagerException("Failed to create listener"
+                        + " socket. Received error: " + e);
             }
             
             while(true) {
@@ -104,22 +126,31 @@ public class NetworkManager {
                         } catch (SocketTimeoutException|EOFException e) {
                             // Sender stopped talking to us so we close
                             // socket resources and continue.
+                            myLogger.debug(socket.getInetAddress() + 
+                                    " has stopped transmitting data to us. "
+                                    + "Received error: " + e);
                         } catch (IOException e) {
-                            // ERROR2DO: think about whether or not to print
-                            // any further messages here.
-                            myLogger.info(myAddress + " received the following I/O error message while trying to read: " + e.getMessage());
-                            // e.printStackTrace();
+                            myLogger.info(myAddress + " received the "
+                                    + "following I/O error message while "
+                                    + "trying to read: " + e);
                         } catch (ClassNotFoundException e) {
-                            // ERROR2DO: figure out what to print in the case of
-                            // error being of type ClassNotFoundException.
+                            // Our Raft peers will generally send us
+                            // serializable objects for which we have class
+                            // templates for, unless they are running outdated
+                            // versions of our code.
+                            // If a malicious client who talks to one of the
+                            // servers in the cluster send over a serializable
+                            // object for which we don't have a class template
+                            // for, report this and continue.
+                            myLogger.info(myAddress + " failed to match the "
+                                    + "received serializable object with a "
+                                    + "known class template. Received error:"
+                                    + " " + e);
                         }
                     });
                 } catch (IOException e) {
-                    // error during accept call (blocking call)
-                    // ERROR2DO: handle this properly
-                    // This is likely fatal, as we get an I/O error when trying
-                    // to accept some connection.
-                    System.exit(1);
+                    throw new NetworkManagerException(myAddress + " failed "
+                            + "to accept connections. Received error: " + e);
                 }
             }
         });
@@ -141,10 +172,15 @@ public class NetworkManager {
         listenerThread.start();
     }
     
+    /**
+     * Sends (a copy of) a serializable object to a recipient.
+     * Assumes that the receiver uses one object input stream for the
+     * lifetime of their corresponding socket.
+     * @param recipientAddress Address to send the object to.
+     * @param object Object to send.
+     */
     public synchronized void sendSerializable(InetSocketAddress recipientAddress, Serializable object) {
-        // Assumes that the receiver uses one object input stream for
-        // the lifetime of their corresponding socket.
-        
+
         // Create a serialized copy of the object before we send the
         // serialized copy to the recipient in another thread.
         // This ensures that no one modifies the object while the object
@@ -179,9 +215,9 @@ public class NetworkManager {
     }
     
     /**
-     * Reschedules (or schedules) the remove socket task. 
-     * COMMENT2DO: finish writing comments for this method.
-     * @param writeSocketInfo
+     * Reschedules (or schedules) the remove socket task.
+     * @param writeSocketInfo A WriteSocketInfo object that contains the
+     * info of a write socket.
      */
     private synchronized void rescheduleRemoveWriteSocket(WriteSocketInfo writeSocketInfo) {
         if (writeSocketInfo.removeSocketTask != null) {
@@ -201,6 +237,12 @@ public class NetworkManager {
         removeWriteSocketTimer.schedule(writeSocketInfo.removeSocketTask, READ_WRITE_TIMEOUT_MS);
     }
     
+    /**
+     * Removes the WriteSocketInfo object in the map that contains socket
+     * info for sending messages.
+     * @param address Address corresponding to a WriteSocketInfo object that
+     * we want to remove.
+     */
     private synchronized void removeWriteSocket(InetSocketAddress address) {
         WriteSocketInfo socketInfo = addrToWriteSocketInfo.get(address);
         if (socketInfo == null) {
@@ -220,7 +262,7 @@ public class NetworkManager {
             }
         } catch (IOException e1) {
             // We silently ignore the error since we already report the failed
-            // sending above.
+            // sending above (see sendSerializable).
         }
     }
 }

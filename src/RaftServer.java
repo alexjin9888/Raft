@@ -42,10 +42,13 @@ import misc.NetworkManagerException;
 
 
 /**
+ * This class implements a simplified version of the Raft consensus protocol.
+ * https://raft.github.io/raft.pdf
  * Each server in the Raft cluster should create and maintain its own
- * Server instance. Each instance runs the Raft protocol.
- * COMMENT2DO: reword comment so that it better describes what this class represents.
- * Make the comment more direct.
+ * Server instance. Note that our implementation differs slightly from the
+ * Raft protocol presented in the link above:
+ * (1) We use 0-indexed schemes
+ * (2) We persist lastApplied in addition to the other two persistent states.
  */
 public class RaftServer {
     // To ensure that at most one thread accesses server state at any given
@@ -59,17 +62,16 @@ public class RaftServer {
      */
     private static final int HEARTBEAT_TIMEOUT_MS = 1000;
 
-    // COMMENT2DO differentiate min and max
     /**
-     * The election timeout is a random variable with the distribution
-     * discrete Uniform(min. election timeout, max election timeout).
-     * The endpoints are inclusive.
+     * The minimum value of election timeout, which is a random variable with
+     * the discrete uniform distribution:
+     * U[min election timeout, max election timeout].
      */
     private static final int MIN_ELECTION_TIMEOUT_MS = 3000;
     /**
-     * The election timeout is a random variable with the distribution
-     * discrete Uniform(min. election timeout, max election timeout).
-     * The endpoints are inclusive.
+     * The maximum value of election timeout, which is a random variable with
+     * the discrete uniform distribution:
+     * U[min election timeout, max election timeout].
      */
     private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
     
@@ -89,7 +91,6 @@ public class RaftServer {
     /**
      * Current leader's id
      */
-    @SuppressWarnings("unused")
     private String leaderId;
 
     /**
@@ -98,15 +99,24 @@ public class RaftServer {
      * properties and keep track of state corresponding to the other servers.
      */
     private class ServerMetadata {
-        InetSocketAddress address; // Each server has a unique address
-        // Index of the next log entry to send to that server
+        /**
+         * Each server has a unique address.
+         */
+        InetSocketAddress address;
+        /**
+         * Index of the next log entry to send to that server.
+         */
         int nextIndex;
-        // Index of highest log entry known to be replicated on server 
+        /**
+         * Index of highest log entry known to be replicated on server.
+         */
         int matchIndex;
     }
-    // A map that maps server id to a server metadata object. This map
-    // enables us to read properties and keep track of state
-    // corresponding to other servers in the Raft cluster.
+    /**
+     * A map that maps server id to a server metadata object. This map
+     * enables us to read properties and keep track of state
+     * corresponding to other servers in the Raft cluster.
+     */
     private HashMap<String, ServerMetadata> peerMetadataMap;
 
     /**
@@ -115,15 +125,28 @@ public class RaftServer {
      */
     private PersistentState persistentState;
 
+    /**
+     * A Timer instance used for scheduling of both election timeout and
+     * heartbeat timeout.
+     */
     private Timer timeoutTimer;
 
+    /**
+     * Operations to execute when timeout expires.
+     */
     private CheckingCancelTimerTask timeoutTask;
 
+    /**
+     * Raft server roles.
+     */
     private static enum Role {
         FOLLOWER,
         CANDIDATE,
         LEADER
     };
+    /**
+     * Current role of server.
+     */
     private Role role;
 
     /**
@@ -138,8 +161,14 @@ public class RaftServer {
      */
     private Set<String> votedForMeSet;
     
+    /**
+     * CommandExecutor instance used to handle and execute client requests.
+     */
     private CommandExecutor commandExecutor;
 
+    /**
+     * A NetworkManager instance that manages sending and receiving messages.
+     */
     private NetworkManager networkManager;
 
     /**
@@ -185,22 +214,7 @@ public class RaftServer {
                     myAddress = elemAddress;
                 }
             }
-
-            persistentState = new PersistentState(this.myId);
-            // The last applied value from persistent state may not be the
-            // most up-to-date commit index in the Raft cluster, but we will
-            // quickly update our commit index as necessary after talking with
-            // peers.
-            commitIndex = this.persistentState.lastApplied;
-       
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
-            timeoutTimer = new Timer();
-
-            this.role = null;
-            transitionRole(Role.FOLLOWER);
-
-            commandExecutor = new CommandExecutor();
-            networkManager = new NetworkManager(myAddress, this::handleSerializable);
             
             Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
                 public void uncaughtException(Thread t, Throwable e) {
@@ -213,6 +227,21 @@ public class RaftServer {
                     }
                 }
             });
+            
+            persistentState = new PersistentState(this.myId);
+            // The last applied value from persistent state may not be the
+            // most up-to-date commit index in the Raft cluster, but we will
+            // quickly update our commit index as necessary after talking with
+            // peers.
+            commitIndex = this.persistentState.lastApplied;
+       
+            timeoutTimer = new Timer();
+
+            this.role = null;
+            transitionRole(Role.FOLLOWER);
+
+            commandExecutor = new CommandExecutor();
+            networkManager = new NetworkManager(myAddress, this::handleSerializable);
  
             logMessage("successfully booted");
         }
@@ -330,7 +359,7 @@ public class RaftServer {
 
     /**
      * Checks whether we can append the sent log entries to our log.
-     * Only called when processing a AppendEntries request.
+     * Only called when processing an AppendEntries request.
      * @param senderPrevLogIndex prevLogIndex field of the request.
      * @param senderPrevLogterm  prevLogTerm field of the request.
      * @return true iff we can append the sent entries.
@@ -380,7 +409,8 @@ public class RaftServer {
      * @return true iff recipient can vote for the sender, and sender's log
      *         is at least as up-to-date as ours.
      */
-    private synchronized boolean checkGrantVote(String senderId, int senderLastLogIndex, int senderLastLogTerm) {
+    private synchronized boolean checkGrantVote(String senderId, 
+            int senderLastLogIndex, int senderLastLogTerm) {
         boolean votedForAnotherServer = !(this.persistentState.votedFor == null
                 || this.persistentState.votedFor.equals(senderId));
 
@@ -457,9 +487,9 @@ public class RaftServer {
 
     /**
      * Wrapper around role assignment that:
-     * 1) changes the role of the server
-     * 2) runs initial behavior corresponding to new role, even if the new role
-     *    is the same as the old one.
+     * (1) changes the role of the server
+     * (2) runs initial behavior corresponding to new role, even if the new role
+     *     is the same as the old one.
      * 
      * We define the behavior of the following transitions in addition to the
      * transitions mentioned in the Raft paper:
@@ -467,7 +497,7 @@ public class RaftServer {
      * * Candidate -> Candidate :: starts a new election.
      * 
      * Precondition: timeoutTask timer and persistentState state have been init.
-     * @param role new role that the server instance transitions to. 
+     * @param role (new) role that the server instance transitions to. 
      */
     private synchronized void transitionRole(Role role) {
         // The defined transitions above allow us to put/contain all the Raft
@@ -581,7 +611,11 @@ public class RaftServer {
         }
     }
 
-    // Wrapper method around setting of commitIndex
+    /**
+     * Wrapper method around setting of commitIndex.
+     * @param newCommitIndex new commitIndex that we want to update 
+     * commitIndex to.
+     */
     private synchronized void updateCommitIndex(int newCommitIndex) {
         if (newCommitIndex <= this.commitIndex) {
             return;
