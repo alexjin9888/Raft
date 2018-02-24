@@ -2,9 +2,9 @@ import java.net.InetSocketAddress;
 import java.util.HashMap;
 
 /**
- * Code to test Raft server instances by running them using threads. 
- * There is an alternative (preferable) way of running the instances using 
- * processes. See the top-level README.md for details.
+ * Code to test Raft server log output by starting up multiple Raft servers.
+ * See the top-level README.md for a more general way to start up Raft servers
+ * to test.
  */
 public class TestRaftServer {
     

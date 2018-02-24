@@ -8,7 +8,7 @@ import java.util.ArrayList;
  */
 public abstract class AddressUtils {
     /**
-     * Parses an address string of the form "hostname:port" into an
+     * Parses an address string of the form hostname:port into an
      * InetSocketAddress object.
      * @param addressString address string to be parsed.
      * @return an InetSocketAddress object representing the given address
@@ -32,7 +32,7 @@ public abstract class AddressUtils {
 
     /**
      * Parses a stringified address list of the form
-     * "hostname0:port0,hostname1:port1,..." into a list of InetSocketAddress
+     * hostname0:port0,hostname1:port1,... into a list of InetSocketAddress
      * objects.
      * @param addressStrings a list of address strings to be parsed.
      * @return a list of InetSocketAddress objects corresponding to the address

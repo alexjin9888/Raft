@@ -2,11 +2,9 @@ package misc;
 
 public class PersistentStateException extends RuntimeException {
     /**
-     * A wrapper class for an Exception that occurred when trying to persist
-     * server specific information to disk.
-     * 
-     * When we fail to persist to disk, we can no longer guarantee
-     * consistency across raft servers and thus terminate the program.
+     * A wrapper class for a fatal exception that occurred when trying to:
+     * 1) load the persistent state from disk, or
+     * 2) keep the server's in-memory state consistent with the state on disk.
      * @param s The detailed error message
      */
     public PersistentStateException(String s) {

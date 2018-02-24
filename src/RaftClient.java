@@ -18,7 +18,7 @@ import misc.AddressUtils;
 
 /**
  * A class that allows users to submit commands to be executed by the Raft
- * cluster, and displays applied command results on stdout.
+ * cluster, and displays applied command results on the client's stdout.
  */
 public class RaftClient {
     
@@ -28,7 +28,7 @@ public class RaftClient {
     private static final int RETRY_TIMEOUT_MS = 1000;
     
     /**
-     * The address that I use to receive replies.
+     * The address that I use to receive all messages from the Raft cluster.
      */
     private InetSocketAddress myAddress;
     
@@ -38,7 +38,7 @@ public class RaftClient {
     private InetSocketAddress leaderAddress;
     
     /**
-     * List of addresses of servers in the Raft cluster.
+     * List of server addresses in the Raft cluster.
      */
     private ArrayList<InetSocketAddress> serverAddresses;
     
@@ -48,12 +48,12 @@ public class RaftClient {
     private Timer retryRequestTimer;
 
     /**
-     * A wrapped TimerTask object that allows checking of task cancellation.
+     * Task to execute when we want to retry a request.
      */
     private CheckingCancelTimerTask retryRequestTask;
         
     /**
-     * A NetworkManager instance that manages sending and receiving messages.
+     * A network I/O manager that manages the sending and receiving of messages.
      */
     private NetworkManager networkManager;
     
@@ -86,7 +86,7 @@ public class RaftClient {
             networkManager = new NetworkManager(this.myAddress,
                     this::handleSerializable, new UncaughtExceptionHandler() {
                 public void uncaughtException(Thread t, Throwable e) {
-                    // We are specifically interested in uncaught exceptions
+                    // We are especially interested in uncaught exceptions
                     // that are instances of NetworkManagerException.
                     // However, we generally want to die if any thread
                     // experiences an uncaught exception.
@@ -100,9 +100,11 @@ public class RaftClient {
     }
     
     /**
-     * A callback method that is executed after our network manager receives
-     * a message.
-     * @param object A serializable object we received
+     * Processes a received serializable object and conditionally sends another
+     * request depending on the contents of the object.
+     * In the context of Raft, these objects come in the form of Raft server
+     * replies to the client.
+     * @param object received serializable object
      */
     public synchronized void handleSerializable(Serializable object) {
         if (!(object instanceof ClientReply)) {
@@ -166,8 +168,8 @@ public class RaftClient {
     }
  
     /**
-     * A method that prompts for a use input. Sends it to the Raft cluster
-     * and blocks until we get a reply (retries indefinitely).
+     * A method that prompts for user input and sends the input to the Raft
+     * cluster.
      */
     private synchronized void waitForAndProcessInput() {
         System.out.println("Please enter a bash command:");
@@ -175,11 +177,11 @@ public class RaftClient {
         numCommandsRead += 1;
         outstandingRequest = new ClientRequest(numCommandsRead, myAddress, command);
         sendRetryingRequest();
-  }
+    }
     
     /**
-     * Creates+runs a client instance that can communicate with a Raft
-     * cluster.
+     * Creates+runs a client application instance that can communicate with a
+     * Raft cluster.
      * @param args args[0] is my address formatted as hostname:port
      *             args[1] is a list of comma-delimited server addresses and
      *             ports formatted as hostname0:port0,hostname1:port1

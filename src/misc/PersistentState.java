@@ -21,15 +21,14 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Each Raft server will instantiate an instance of this class to persist
- * data to disk. Methods in this class ensures atomic changes to the server's
- * persistent state and allows for recovery after crashes.
+ * Manages a Raft server's persistent state, which allows for state recovery
+ * after server termination.
  */
 public class PersistentState {
     
     /**
-     * Value representing that the server has not voted for anyone for the
-     * current election term.
+     * Value representing that the server has not voted (yet) for anyone for
+     * the current election term.
      */
     private static final String VOTED_FOR_SENTINEL_VALUE = "null";
     /**
@@ -73,14 +72,17 @@ public class PersistentState {
      */
     private Path lastAppliedPath;    
     /**
-     * A RandomAccessFile instance that points to the file containing all
-     * log entries.
+     * A RandomAccessFile instance that that manages reads and writes to a file
+     * containing all log entries.
      */
     private RandomAccessFile logFile;
 
     /**
-     * Attempt to load persistent state data from disk.
-     * If the state does not exist on disk, initialize with default values.
+     * Attempt to load persistent state data from disk. If we cannot load, then
+     * we throw a PersistentState exception.
+     * If the state does not exist on disk, initialize with default values. If
+     * we cannot save the initial PerisstentState values to disk, then we throw
+     * a PesistentState exception.
      * @param myId See top of class file.
      */
     public PersistentState(String myId) {
@@ -142,12 +144,12 @@ public class PersistentState {
     }
     
     /**
-     * Writes a string to disk. Throws PersistentStateException upon failure
-     * because our persistent state is no longer consistent.
+     * Writes a string to disk. Throws PersistentStateException upon write
+     * failure.
      * Precondition: Cannot write out `null` to file. Some non-null sentinel
      * value has to take its place instead.
-     * @param filePath Path to which we write the string.
-     * @param contents String to write.
+     * @param filePath Path to the file.
+     * @param contents Contents that we want to write to file.
      */
     private synchronized void writeOutFileContents(Path filePath, String contents) {
         try {
@@ -159,15 +161,6 @@ public class PersistentState {
     }
 
     /**
-     * Set current term and then write to persistent state on disk.
-     * @param currentTerm See top of class file
-     */
-    public synchronized void setTerm(int currentTerm) {
-        this.currentTerm = currentTerm;
-        writeOutFileContents(currentTermPath, Integer.toString(currentTerm));
-    }
-    
-    /**
      * Tells you whether there exists a log entry with the specified index.
      * @param index specified log entry index to check existence of.
      * @return true iff our log contains a log entry at the given index.
@@ -177,7 +170,16 @@ public class PersistentState {
     }
 
     /**
-     * Set id of server you voted for and then write to persistent state on disk
+     * Set current term and then persist update to disk.
+     * @param currentTerm See top of class file
+     */
+    public synchronized void setTerm(int currentTerm) {
+        this.currentTerm = currentTerm;
+        writeOutFileContents(currentTermPath, Integer.toString(currentTerm));
+    }
+
+    /**
+     * Set id of the server you voted for and then persist update to disk.
      * @param votedFor See top of class file
      */
     public synchronized void setVotedFor(String votedFor) {
@@ -186,7 +188,7 @@ public class PersistentState {
     }
     
     /**
-     * Increment the last applied index variable and persist state to disk.
+     * Increment the last applied index variable and persist update to disk.
      */
     public synchronized void incrementLastApplied() {
         this.lastApplied += 1;

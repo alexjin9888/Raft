@@ -18,7 +18,8 @@ public class LogEntry implements Serializable {
      */
     public int index;
     /**
-     * Term of the leader when it sent this log.
+     * Term of the leader when it received the client request corresponding
+     * to the command below.
      */
     public int term;
     /**

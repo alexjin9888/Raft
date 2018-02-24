@@ -24,8 +24,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Server and client programs use this class to manager their networking
- * connections to send and receive messages.
+ * This class facilitates the sending and receiving of serializable objects.
  */
 public class NetworkManager {
     
@@ -35,8 +34,12 @@ public class NetworkManager {
      */
     private static final int READ_WRITE_TIMEOUT_MS = 300000;
     
-    /* Start sender specific attributes */
+    /* Start of listing of attributes relating to sending */
     
+    /**
+     * Information container class to facilitate writing to a socket for
+     * multiple messages.
+     */
     class WriteSocketInfo {
         InetSocketAddress address;
         Socket socket;
@@ -49,12 +52,11 @@ public class NetworkManager {
     private HashMap<InetSocketAddress, WriteSocketInfo> addrToWriteSocketInfo;
     
     /**
-     * Timer instance used to schedule a removal of write socket after
-     * READ_WRITE_TIMEOUT_MS.
+     * Timer instance used to schedule a removal of write socket.
      */
     private Timer removeWriteSocketTimer;
     
-    /* End sender specific attributes */
+    /* End of listing of attributes relating to sending */
     
     /**
      * Thread pool that we can use to send and receive messages on different
@@ -73,8 +75,8 @@ public class NetworkManager {
     /**
      * @param myAddress my address for listening for incoming connections
      * @param handleSerializableCb Callback that is called with a valid
-     * serializable object any time network manager receives such an object from
-     * a sender.
+     * serializable object any time the network manager receives such an object
+     * from a sender.
      * @param ueh Handler for uncaught exceptions that may arise either from
      * fatal errors in network manager operation (NetworkManagerException) or
      * from executing the passed-in `handleSerializableCb` callback.
@@ -160,8 +162,8 @@ public class NetworkManager {
     
     /**
      * Sends (a copy of) a serializable object to a recipient.
-     * Assumes that the receiver uses one object input stream for the
-     * lifetime of their corresponding socket.
+     * Assumes that the receiver uses one object input stream for the lifetime
+     * of their corresponding socket.
      * @param recipientAddress Address to send the object to.
      * @param object Object to send.
      */
@@ -204,8 +206,8 @@ public class NetworkManager {
     
     /**
      * Reschedules (or schedules) the remove socket task.
-     * @param writeSocketInfo A WriteSocketInfo object that contains the
-     * info of a write socket.
+     * @param writeSocketInfo Object that contains useful information for
+     * scheduling the removal of a socket task.
      */
     private synchronized void rescheduleRemoveWriteSocket(WriteSocketInfo writeSocketInfo) {
         if (writeSocketInfo.removeSocketTask != null) {
@@ -226,10 +228,10 @@ public class NetworkManager {
     }
     
     /**
-     * Removes the WriteSocketInfo object in the map that contains socket
-     * info for sending messages.
-     * @param address Address corresponding to a WriteSocketInfo object that
-     * we want to remove.
+     * Removes all resources associated with a write socket that we used
+     * previously for sending one or more messages.
+     * @param address Address corresponding to the write socket that we want to
+     * remove.
      */
     private synchronized void removeWriteSocket(InetSocketAddress address) {
         WriteSocketInfo socketInfo = addrToWriteSocketInfo.get(address);

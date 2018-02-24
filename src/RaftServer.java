@@ -250,9 +250,11 @@ public class RaftServer {
     }
 
     /**
-     * Processes an incoming serializable object and conditionally sends a reply
+     * Processes a received serializable object and conditionally sends a reply
      * depending on type of object.
-     * @param object incoming serializable object
+     * In the context of Raft, these objects come in the form of Raft server
+     * messages and Raft client requests.
+     * @param object received serializable object
      */
     public synchronized void handleSerializable(Serializable object) {
         logMessage("Received " + object);

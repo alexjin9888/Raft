@@ -27,6 +27,11 @@ public class CommandExecutor {
      * processing of the command result.
      */
     public CommandExecutor(UncaughtExceptionHandler ueh) {
+        if (ueh == null) {
+            singleThreadService = Executors.newSingleThreadExecutor();
+            return;
+        }
+
         singleThreadService = Executors.newSingleThreadExecutor(
                 new ThreadFactory() {
             public Thread newThread(Runnable r) {

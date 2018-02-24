@@ -6,10 +6,10 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
 
 /**
- * Code to test Raft client instance by (silently) spinning up three Raft
- * servers and a Raft client using threads. 
- * There is an alternative (preferable) way of running the instances using 
- * processes. See the top-level README.md for details.
+ * Code to test Raft client application command execution via command line input
+ * by starting up multiple Raft servers and a Raft client instance.
+ * See the top-level README.md for a more general way to start up Raft servers
+ * and Raft clients.
  */
 public class TestRaftClient {
     
