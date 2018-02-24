@@ -257,12 +257,16 @@ public class NetworkManager {
             if (socketInfo.oos != null) {
                 socketInfo.oos.close();
             }
+        } catch (IOException e1) {
+            // We silently ignore the error since we already report the failed
+            // sending above (see sendSerializable).
+        }
+        try {
             if (socketInfo.socket != null) {
                 socketInfo.socket.close();
             }
         } catch (IOException e1) {
-            // We silently ignore the error since we already report the failed
-            // sending above (see sendSerializable).
+            // See above
         }
     }
 }
