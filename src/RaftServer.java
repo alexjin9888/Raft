@@ -42,10 +42,13 @@ import misc.NetworkManagerException;
 
 
 /**
+ * This class implements a simplified version of the Raft consensus protocol.
+ * https://raft.github.io/raft.pdf
  * Each server in the Raft cluster should create and maintain its own
- * Server instance. Each instance runs the Raft protocol.
- * COMMENT2DO: reword comment so that it better describes what this class represents.
- * Make the comment more direct.
+ * Server instance. Note that our implementation differs slightly from the
+ * Raft protocol presented in the link above:
+ * (1) We use 0-indexed schemes
+ * (2) We persist lastApplied in addition to the other two persistent states.
  */
 public class RaftServer {
     // To ensure that at most one thread accesses server state at any given

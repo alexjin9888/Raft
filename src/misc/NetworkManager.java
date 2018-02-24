@@ -194,8 +194,9 @@ public class NetworkManager {
     }
     
     /**
-     * Reschedules (or schedules) the remove socket task. 
-     * COMMENT2DO: finish writing comments for this method.
+     * Reschedules (or schedules) the remove socket task. We reset the
+     * TimerTask to remove the socket because we have recently successfully
+     * sent message(s) on that socket.
      * @param writeSocketInfo A WriteSocketInfo object that contains the
      * info of a write socket.
      */
