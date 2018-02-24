@@ -9,6 +9,11 @@ import java.util.regex.Pattern;
  */
 public class LogEntry implements Serializable {
     /**
+     * Class versioning to support instance serialization/deserialization
+     */
+    private static final long serialVersionUID = 1L;
+    
+    /**
      * Index of log entry in the log.
      */
     public int index;

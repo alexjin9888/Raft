@@ -86,16 +86,13 @@ public class RaftClient {
             networkManager = new NetworkManager(this.myAddress,
                     this::handleSerializable, new UncaughtExceptionHandler() {
                 public void uncaughtException(Thread t, Throwable e) {
-                    if (e instanceof PersistentStateException
-                            || e instanceof CommandExecutorException
-                            || e instanceof NetworkManagerException) {
+                    if (e instanceof NetworkManagerException) {
                         System.out.println(e);
                         e.printStackTrace();
                         System.exit(1);
                     }
                 }
             });
-            
             waitForAndProcessInput();
         }
     }

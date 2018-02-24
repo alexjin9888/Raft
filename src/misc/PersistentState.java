@@ -220,8 +220,8 @@ public class PersistentState {
         try {
             logFile.setLength(index == 0 ? 0 : runningLogSizeInBytes.get(index - 1));
         } catch (IOException e) {
-            throw new PersistentStateException("Cannot truncate logs. Received "
-                    + "error: " + e);
+            throw new PersistentStateException("Cannot perform truncate op. for"
+                + " logs. Received error: " + e);
         }
 
         this.log.subList(index, this.log.size()).clear();
@@ -245,8 +245,8 @@ public class PersistentState {
                 // `RandomAccessFile` doesn't maintain a buffer, so we don't need
                 // to flush.
             } catch (IOException e) {
-                throw new PersistentStateException("Cannot persist logs to "
-                        + "disk. Received error: " + e);
+                throw new PersistentStateException("Cannot persist new "
+                        + "log  entries to disk. Received error: " + e);
             }
         }    
     }
