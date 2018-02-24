@@ -17,8 +17,8 @@ import misc.PersistentStateException;
 import misc.AddressUtils;
 
 /**
- * A Raft client class through which programs can request commands to be
- * sent, executed and replicated across a Raft cluster.
+ * A class that allows users to submit commands to be executed by the Raft
+ * cluster, and displays applied command results on stdout.
  */
 public class RaftClient {
     
@@ -86,11 +86,13 @@ public class RaftClient {
             networkManager = new NetworkManager(this.myAddress,
                     this::handleSerializable, new UncaughtExceptionHandler() {
                 public void uncaughtException(Thread t, Throwable e) {
-                    if (e instanceof NetworkManagerException) {
-                        System.out.println(e);
-                        e.printStackTrace();
-                        System.exit(1);
-                    }
+                    // We are specifically interested in uncaught exceptions
+                    // that are instances of NetworkManagerException.
+                    // However, we generally want to die if any thread
+                    // experiences an uncaught exception.
+                    System.out.println(e);
+                    e.printStackTrace();
+                    System.exit(1);
                 }
             });
             waitForAndProcessInput();
@@ -178,9 +180,9 @@ public class RaftClient {
     /**
      * Creates+runs a client instance that can communicate with a Raft
      * cluster.
-     * @param args args[0] is my address port formatted as <address:port>
+     * @param args args[0] is my address formatted as hostname:port
      *             args[1] is a list of comma-delimited server addresses and
-     *             ports formatted as [address:port].
+     *             ports formatted as hostname0:port0,hostname1:port1
      */
     public static void main(String[] args) {        
         InetSocketAddress myAddress = null;

@@ -21,15 +21,10 @@ public class CommandExecutor {
      */
     private ExecutorService singleThreadService;
 
-    public CommandExecutor() {
-        singleThreadService = Executors.newSingleThreadExecutor();
-    }
-
     /**
-     * @param ueh Function for handling uncaught exceptions that may be thrown
-     *            while executing a command (CommandExecutionException) or in
-     *            the caller's processing of the command result (i.e., any
-     *            unchecked exception that the callback code might throw).
+     * @param ueh Handler for uncaught exceptions that may arise either from
+     * executing a command (CommandExecutionException) or from the caller's
+     * processing of the command result.
      */
     public CommandExecutor(UncaughtExceptionHandler ueh) {
         singleThreadService = Executors.newSingleThreadExecutor(
@@ -66,12 +61,12 @@ public class CommandExecutor {
                 }
             } catch (IOException e) {
                 throw new CommandExecutorException("Client command <"
-                        + command + "> execution failed due to IOException. "
-                        + "Received error: " + e);
+                        + command + "> execution failed due to I/O exception. "
+                        + "Received exception: " + e);
             } catch (InterruptedException e) {
                 throw new CommandExecutorException("Client command <"
                         + command + "> execution failed due to "
-                        + "InterruptedException. Received error: " + e);
+                        + "thread interruption. Received exception: " + e);
             }
 
             handleCommandResultCb.accept(result);

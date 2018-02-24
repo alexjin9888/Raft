@@ -8,10 +8,11 @@ import java.util.ArrayList;
  */
 public abstract class AddressUtils {
     /**
-     * Parses an address string into an InetSocketAddress object.
+     * Parses an address string of the form "hostname:port" into an
+     * InetSocketAddress object.
      * @param addressString address string to be parsed.
      * @return an InetSocketAddress object representing the given address
-     * string.
+     * string. If the parsing failed, return null.
      */
     public static InetSocketAddress parseAddress(String addressString) {
         int port;
@@ -30,11 +31,12 @@ public abstract class AddressUtils {
     }
 
     /**
-     * Parses a list of address strings into a list of InetSocketAddress
+     * Parses a stringified address list of the form
+     * "hostname0:port0,hostname1:port1,..." into a list of InetSocketAddress
      * objects.
      * @param addressStrings a list of address strings to be parsed.
-     * @return a list of InetSocketAddress objects representing the given
-     * list of address strings.
+     * @return a list of InetSocketAddress objects corresponding to the address
+     * strings. If the parsing failed, return null.
      */
     public static ArrayList<InetSocketAddress> parseAddresses(String addressStrings) {
         ArrayList<InetSocketAddress> addresses = new ArrayList<InetSocketAddress>();

@@ -27,6 +27,10 @@ public abstract class ObjectUtils {
      * of failure, return null.
      */
     private static byte[] serialize(Serializable object) {
+        if (object == null) {
+            return null;
+        }
+
         byte[] objectBytes;
                 
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -48,6 +52,10 @@ public abstract class ObjectUtils {
      * case of failure, return null.
      */
     private static Serializable deserialize(byte[] objectBytes) {
+        if (objectBytes == null) {
+            return null;
+        }
+
         Object object;
 
         try (ByteArrayInputStream bais = new ByteArrayInputStream(objectBytes);

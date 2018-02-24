@@ -56,7 +56,7 @@ public class PersistentState {
     public int lastApplied;
 
     /**
-     * List that maintains the cumulative running log size in bytes
+     * List that maintains the running log size in bytes
      */
     private ArrayList<Integer> runningLogSizeInBytes;
 
@@ -98,7 +98,8 @@ public class PersistentState {
      
         // Testing for existence of server persistent state directory is
         // sufficient to tell us whether persistent state for Raft server
-        // already exists.
+        // already exists. If the directory is missing a file, then we treat
+        // that as the Raft server's persistent state being corrupted.
 
         if (Files.isDirectory(baseDirPath)) {
             try {
@@ -119,7 +120,7 @@ public class PersistentState {
             } catch (IOException | NumberFormatException e) {
                 throw new PersistentStateException("Cannot successfully load "
                         + "persistent state from path: " + baseDirPath + "."
-                                + "Received error: " + e);
+                                + "Received exception: " + e);
             }
         } else {
             try {
@@ -127,33 +128,19 @@ public class PersistentState {
                 writeOutFileContents(currentTermPath, Integer.toString(currentTerm));
                 writeOutFileContents(votedForPath, VOTED_FOR_SENTINEL_VALUE);
                 writeOutFileContents(lastAppliedPath, Integer.toString(lastApplied));
-                writeOutFileContents(logFilePath, stringifyLogEntries(log));
+                writeOutFileContents(logFilePath, "");
                 
                 logFile = new RandomAccessFile(logFilePath.toString(), "rw");
             } catch (IOException e) {
-                throw new PersistentStateException("Cannot create persistent "
-                        + "state for specified path: " + baseDirPath + "."
-                                + "Received error: " + e);
+                throw new PersistentStateException("Cannot successfully create"
+                        + "persistent state for specified path: " + baseDirPath
+                        + ".Received exception: " + e);
             }
 
 
         }
     }
     
-
-    /**
-     * Stringifies a list of log entries and adds the newline character "\n"
-     * between each log entry.
-     * @param logEntries A list of log entries to stringify.
-     * @return String version of the list of log entries deliminated by the
-     * newline character.
-     */
-    private String stringifyLogEntries(ArrayList<LogEntry> logEntries) {
-        return logEntries.stream()
-                         .map(LogEntry::toString)
-                         .collect(Collectors.joining("\n"));
-    }
-
     /**
      * Writes a string to disk. Throws PersistentStateException upon failure
      * because our persistent state is no longer consistent.
@@ -166,8 +153,8 @@ public class PersistentState {
         try {
             Files.write(filePath, contents.getBytes());
         } catch (IOException e) {
-            throw new PersistentStateException("Cannot persist to file path: "
-                    + filePath + ". Received error: " + e);
+            throw new PersistentStateException("Cannot persist state to file"
+                    + "path: " + filePath + ". Received exception: " + e);
         }
     }
 
@@ -181,8 +168,9 @@ public class PersistentState {
     }
     
     /**
-     * @param index Index to check if we have a log corresponding to.
-     * @return True iff our log contains a log entry at the given index.
+     * Tells you whether there exists a log entry with the specified index.
+     * @param index specified log entry index to check existence of.
+     * @return true iff our log contains a log entry at the given index.
      */
     public boolean logHasIndex(int index) {
         return index >= 0 && index < this.log.size();
@@ -218,8 +206,8 @@ public class PersistentState {
         try {
             logFile.setLength(index == 0 ? 0 : runningLogSizeInBytes.get(index - 1));
         } catch (IOException e) {
-            throw new PersistentStateException("Cannot perform truncate op. for"
-                + " logs. Received error: " + e);
+            throw new PersistentStateException("Cannot perform truncate "
+                    + "procedure on logs. Received exception: " + e);
         }
 
         this.log.subList(index, this.log.size()).clear();
@@ -231,21 +219,30 @@ public class PersistentState {
      * @param newEntry log entry to be appended
      */
     public synchronized void appendLogEntries(ArrayList<LogEntry> newEntries) {
+        
+        if (newEntries.size() == 0) {
+            return;
+        }
+        
         this.log.addAll(newEntries);
         
-        int currentLogLength = runningLogSizeInBytes.size() == 0 ? 0 : runningLogSizeInBytes.get(runningLogSizeInBytes.size() - 1);
+        int currentLogSize = runningLogSizeInBytes.size() == 0 ? 0 : runningLogSizeInBytes.get(runningLogSizeInBytes.size() - 1);
+        String stringifiedLogEntries = "";
 
         for (LogEntry logEntry : newEntries) {
-            byte[] logEntryBytes = (logEntry.toString() + "\n").getBytes();
-            runningLogSizeInBytes.add(currentLogLength + logEntryBytes.length);
-            try {
-                logFile.write(logEntryBytes);
-                // `RandomAccessFile` doesn't maintain a buffer, so we don't need
-                // to flush.
-            } catch (IOException e) {
-                throw new PersistentStateException("Cannot persist new "
-                        + "log  entries to disk. Received error: " + e);
-            }
-        }    
+            String stringifiedLogEntry = logEntry.toString() + "\n";
+            stringifiedLogEntries += stringifiedLogEntry;
+            runningLogSizeInBytes.add(currentLogSize +
+                    stringifiedLogEntry.getBytes().length);
+        }
+
+        try {
+            logFile.write(stringifiedLogEntries.getBytes());
+            // `RandomAccessFile` doesn't maintain a buffer, so we don't
+            // need to flush.
+        } catch (IOException e) {
+            throw new PersistentStateException("Cannot persist new log entries"
+                    + " to disk. Received exception: " + e);
+        }
     }
 }
