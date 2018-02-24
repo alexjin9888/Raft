@@ -1,4 +1,5 @@
 import java.io.Serializable;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Scanner;
@@ -9,7 +10,10 @@ import java.util.concurrent.ThreadLocalRandom;
 import messages.ClientReply;
 import messages.ClientRequest;
 import misc.CheckingCancelTimerTask;
+import misc.CommandExecutorException;
 import misc.NetworkManager;
+import misc.NetworkManagerException;
+import misc.PersistentStateException;
 import misc.AddressUtils;
 
 /**
@@ -76,9 +80,21 @@ public class RaftClient {
             commandReader = new Scanner(System.in);
             outstandingRequest = null;
             numCommandsRead = 0;
+            
             retryRequestTimer = new Timer();
 
-            networkManager = new NetworkManager(this.myAddress, this::handleSerializable);
+            networkManager = new NetworkManager(this.myAddress,
+                    this::handleSerializable, new UncaughtExceptionHandler() {
+                public void uncaughtException(Thread t, Throwable e) {
+                    if (e instanceof PersistentStateException
+                            || e instanceof CommandExecutorException
+                            || e instanceof NetworkManagerException) {
+                        System.out.println(e);
+                        e.printStackTrace();
+                        System.exit(1);
+                    }
+                }
+            });
             
             waitForAndProcessInput();
         }

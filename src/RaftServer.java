@@ -214,22 +214,7 @@ public class RaftServer {
                     myAddress = elemAddress;
                 }
             }
-
-            persistentState = new PersistentState(this.myId);
-            // The last applied value from persistent state may not be the
-            // most up-to-date commit index in the Raft cluster, but we will
-            // quickly update our commit index as necessary after talking with
-            // peers.
-            commitIndex = this.persistentState.lastApplied;
-       
             outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
-            timeoutTimer = new Timer();
-
-            this.role = null;
-            transitionRole(Role.FOLLOWER);
-
-            commandExecutor = new CommandExecutor();
-            networkManager = new NetworkManager(myAddress, this::handleSerializable);
             
             Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
                 public void uncaughtException(Thread t, Throwable e) {
@@ -242,6 +227,21 @@ public class RaftServer {
                     }
                 }
             });
+            
+            persistentState = new PersistentState(this.myId);
+            // The last applied value from persistent state may not be the
+            // most up-to-date commit index in the Raft cluster, but we will
+            // quickly update our commit index as necessary after talking with
+            // peers.
+            commitIndex = this.persistentState.lastApplied;
+       
+            timeoutTimer = new Timer();
+
+            this.role = null;
+            transitionRole(Role.FOLLOWER);
+
+            commandExecutor = new CommandExecutor();
+            networkManager = new NetworkManager(myAddress, this::handleSerializable);
  
             logMessage("successfully booted");
         }
