@@ -12,7 +12,7 @@ public class LogEntry implements Serializable {
      * Class versioning to support instance serialization/deserialization
      */
     private static final long serialVersionUID = 1L;
-    
+
     /**
      * Index of log entry in the log.
      */
@@ -26,7 +26,7 @@ public class LogEntry implements Serializable {
      * Command to be executed on each server.
      */
     public String command;
-    
+
     /**
      * A Pattern instance that contains the regular expression used to parse
      * a log entry string.
@@ -44,7 +44,7 @@ public class LogEntry implements Serializable {
         this.term = term;
         this.command = command;
     }
-    
+
     /**
      * An alternative constructor that populates a LogEntry instance by
      * parsing a string representation of a log entry.
@@ -60,7 +60,7 @@ public class LogEntry implements Serializable {
         this.term = Integer.parseInt(m.group(2));
         this.command = m.group(3);
     }
-    
+
     @Override
     public String toString() {
         return "LogEntry [index=" + index + ", term=" + term + ", command="
@@ -71,13 +71,13 @@ public class LogEntry implements Serializable {
     public boolean equals(Object obj) {
         if (obj == null)
             return false;
-        
+
         if (!(obj instanceof LogEntry)) {
             return false;
         }
-        
+
         LogEntry other = (LogEntry) obj;
         return this.index == other.index && this.term == other.term;
     }
-    
+
 }

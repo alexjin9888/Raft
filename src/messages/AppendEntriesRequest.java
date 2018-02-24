@@ -38,7 +38,7 @@ public class AppendEntriesRequest extends RaftMessage {
      * @param leaderCommit see top of class file
      */
     public AppendEntriesRequest(String serverId, int term, int prevLogIndex,
-        int prevLogTerm, ArrayList<LogEntry> entries, int leaderCommit) {
+            int prevLogTerm, ArrayList<LogEntry> entries, int leaderCommit) {
         super(serverId, term);
         this.prevLogIndex = prevLogIndex;
         this.prevLogTerm = prevLogTerm;

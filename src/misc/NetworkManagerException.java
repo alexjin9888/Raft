@@ -5,6 +5,7 @@ package misc;
  * a listener socket or accepting incoming connection(s).
  * @param s The detailed error message
  */
+@SuppressWarnings("serial")
 public class NetworkManagerException extends RuntimeException {
     public NetworkManagerException(String s) {
         super(s);

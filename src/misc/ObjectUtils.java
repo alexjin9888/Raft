@@ -10,7 +10,7 @@ import java.io.Serializable;
  * Utility class that provides some functions for working with objects.
  */
 public abstract class ObjectUtils {
-    
+
     /**
      * Creates a deep clone of a serializable object.
      * @param obj Serializable object to be cloned
@@ -32,19 +32,19 @@ public abstract class ObjectUtils {
         }
 
         byte[] objectBytes;
-                
+
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+                ObjectOutputStream oos = new ObjectOutputStream(bos)) {
             oos.writeObject(object);
             oos.flush();
             objectBytes = bos.toByteArray();
         } catch (IOException e) {            
             objectBytes = null;
         }
-        
+
         return objectBytes;
     }
-    
+
     /**
      * Deserializes a sequence of bytes into a serializable object.
      * @param objectBytes a byte array to be deserialized.
@@ -58,15 +58,16 @@ public abstract class ObjectUtils {
 
         Object object;
 
-        try (ByteArrayInputStream bais = new ByteArrayInputStream(objectBytes);
-                 ObjectInputStream ois = new ObjectInputStream(bais)) {
+        try (ByteArrayInputStream bais = 
+                new ByteArrayInputStream(objectBytes);
+                ObjectInputStream ois = new ObjectInputStream(bais)) {
             object = ois.readObject();
         } catch (ClassNotFoundException e) {
             object = null;
         } catch (IOException e) {
             object = null;
         }
-        
+
         return (Serializable) object;
     }
 

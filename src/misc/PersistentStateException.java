@@ -1,5 +1,6 @@
 package misc;
 
+@SuppressWarnings("serial")
 public class PersistentStateException extends RuntimeException {
     /**
      * A wrapper class for a fatal exception that occurred when trying to:

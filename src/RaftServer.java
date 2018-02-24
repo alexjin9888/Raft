@@ -1,24 +1,13 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.InetSocketAddress;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Scanner;
 import java.util.Set;
 import java.util.Timer;
-import java.util.TimerTask;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,14 +20,11 @@ import messages.RaftMessage;
 import messages.RequestVoteReply;
 import messages.RequestVoteRequest;
 import misc.PersistentState;
-import misc.PersistentStateException;
 import misc.AddressUtils;
 import misc.CheckingCancelTimerTask;
 import misc.CommandExecutor;
-import misc.CommandExecutorException;
 import misc.LogEntry;
 import misc.NetworkManager;
-import misc.NetworkManagerException;
 
 
 /**
@@ -57,8 +43,8 @@ public class RaftServer {
     // 
     // There are some instance variables whose value should be set by calling
     // a private wrapper method within this class (search up the keyword
-    // `wrapper` in this file for details). These wrapper methods help maintain
-    // invariants for the instance variables.
+    // `wrapper` in this file for details). These wrapper methods help 
+    // maintain invariants for the instance variables.
 
     /**
      * Time elapsed before we send out another round of heartbeat messages
@@ -77,7 +63,7 @@ public class RaftServer {
      * U([min election timeout, max election timeout]).
      */
     private static final int MAX_ELECTION_TIMEOUT_MS = 5000;
-    
+
     /**
      * Value used when asked to specify the term of a non-existent log entry.
      */
@@ -97,8 +83,8 @@ public class RaftServer {
     private String leaderId;
 
     /**
-     * An instance of this class is created for every other server in the Raft
-     * cluster. These instances are used to help the running server read
+     * An instance of this class is created for every other server in the 
+     * Raft cluster. These instances are used to help the running server read
      * properties and keep track of state corresponding to the other servers.
      */
     private class ServerMetadata {
@@ -152,23 +138,25 @@ public class RaftServer {
 
     /**
      * Index of highest log entry known to be committed. 
-     * (initialized to index of last applied log entry, increases monotonically)
+     * (initialized to index of last applied log entry, increases
+     * monotonically)
      */
     private int commitIndex;
 
     /**
-     * (Candidate-specific) Set containing server IDs that voted for me during
-     * the current election term.
+     * (Candidate-specific) Set containing server IDs that voted for me
+     * during the current election term.
      */
     private Set<String> votedForMeSet;
-    
+
     /**
      * Bash command execution manager.
      */
     private CommandExecutor commandExecutor;
 
     /**
-     * A network I/O manager that manages the sending and receiving of messages.
+     * A network I/O manager that manages the sending and receiving of 
+     * messages.
      */
     private NetworkManager networkManager;
 
@@ -177,7 +165,7 @@ public class RaftServer {
      * client after applying the command of a log entry.
      */
     private HashMap<LogEntry, ClientRequest> outstandingClientRequestsMap;
-    
+
     /**
      * Tracing and debugging logger;
      * see: https://logging.apache.org/log4j/2.x/manual/api.html
@@ -190,14 +178,15 @@ public class RaftServer {
      *        Contains entries for all servers in Raft cluster.
      * @param myId my server id
      */
-    public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap, String myId) {
+    public RaftServer(HashMap<String, InetSocketAddress> serverAddressesMap,
+            String myId) {
         // As part of initialization, spins up three threads to help this
         // server carry out the Raft protocol. One thread is a timeout tasks
-        // executor thread (see Timer initialization below), another thread is a
-        // command executor thread (see ExecutorService initialization below),
-        // and another thread is a connections listener thread (see
+        // executor thread (see Timer initialization below), another thread 
+        // is a command executor thread (see ExecutorService initialization 
+        // below), and another thread is a connections listener thread (see
         // NetworkManager initialization below).
-        
+
         synchronized(RaftServer.this) {
             this.myId = myId;
             leaderId = null;
@@ -215,9 +204,11 @@ public class RaftServer {
                     myAddress = elemAddress;
                 }
             }
-            outstandingClientRequestsMap = new HashMap<LogEntry, ClientRequest>();
-            
-            Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+            outstandingClientRequestsMap = 
+                    new HashMap<LogEntry, ClientRequest>();
+
+            Thread.setDefaultUncaughtExceptionHandler(
+                    new UncaughtExceptionHandler() {
                 public void uncaughtException(Thread t, Throwable e) {
                     // We are especially interested in uncaught exceptions
                     // that are instances of PersistentStateException,
@@ -229,29 +220,30 @@ public class RaftServer {
                     System.exit(1);
                 }
             });
-            
+
             persistentState = new PersistentState(this.myId);
             // The last applied value from persistent state may not be the
             // most up-to-date commit index in the Raft cluster, but we will
-            // quickly update our commit index as necessary after talking with
-            // peers.
+            // quickly update our commit index as necessary after talking 
+            // with peers.
             commitIndex = this.persistentState.lastApplied;
-       
+
             timeoutTimer = new Timer();
 
             this.role = null;
             transitionRole(Role.FOLLOWER);
 
             commandExecutor = new CommandExecutor(null);
-            networkManager = new NetworkManager(myAddress, this::handleSerializable, null);
- 
+            networkManager = new NetworkManager(myAddress, 
+                    this::handleSerializable, null);
+
             logMessage("successfully booted");
         }
     }
 
     /**
-     * Processes a received serializable object and conditionally sends a reply
-     * depending on type of object.
+     * Processes a received serializable object and conditionally sends a 
+     * reply depending on type of object.
      * In the context of Raft, these objects come in the form of Raft server
      * messages and Raft client requests.
      * @param object received serializable object
@@ -263,7 +255,8 @@ public class RaftServer {
             return;
         }
         if (!(object instanceof RaftMessage)) {
-            logMessage("Don't know how to handle the serializable object: " + object);
+            logMessage("Don't know how to handle the serializable object: " +
+                    object);
             return;
         }
         RaftMessage message = (RaftMessage) object;
@@ -272,9 +265,9 @@ public class RaftServer {
             transitionRole(Role.FOLLOWER);
         }
         if (message.term < this.persistentState.currentTerm) {
-            // In the case of a stale sender term, if the message is a request,
-            // then we want to send a reply. For all messages, we want to stop
-            // any further processing of the message.
+            // In the case of a stale sender term, if the message is a 
+            // request, then we want to send a reply. For all messages, we 
+            // want to stop any further processing of the message.
             if (message instanceof AppendEntriesRequest) {
                 // The `nextIndex` value specified in the reply should not
                 // matter in this case.
@@ -300,7 +293,8 @@ public class RaftServer {
         } else if (message instanceof RequestVoteReply) {
             handleRequestVoteReply((RequestVoteReply) message);
         } else {
-            logMessage("Don't know how to handle the Raft message: " + message);
+            logMessage("Don't know how to handle the Raft message: " + 
+                    message);
             return;
         }
     }
@@ -320,18 +314,22 @@ public class RaftServer {
         } else {
             InetSocketAddress leaderAddress = leaderId != null
                     ? peerMetadataMap.get(leaderId).address
-                    : null;
-            ClientReply reply = new ClientReply(request.commandId, leaderAddress, false, null);
-            logMessage("Sending " + reply);
-            networkManager.sendSerializable(request.clientAddress, reply);
+                            : null;
+                    ClientReply reply = new ClientReply(request.commandId, 
+                            leaderAddress, false, null);
+                    logMessage("Sending " + reply);
+                    networkManager.sendSerializable(request.clientAddress, 
+                            reply);
         }
     }
 
     /**
-     * Processes a valid AppendEntries request from a leader and sends a reply.
+     * Processes a valid AppendEntries request from a leader and sends a 
+     * reply.
      * @param request data corresponding to AppendEntries request.
      */
-    private synchronized void handleAppendEntriesRequest(AppendEntriesRequest request) {
+    private synchronized void handleAppendEntriesRequest(
+            AppendEntriesRequest request) {
         // If we were a leader, we should have downgraded to follower
         // prior to processing a valid AppendEntries request.
         assert(this.role != Role.LEADER);
@@ -340,7 +338,7 @@ public class RaftServer {
         // the election timer.
         transitionRole(Role.FOLLOWER);
         this.leaderId = request.serverId;
-        
+
         boolean successfulAppend = false;
         int nextIndex;
 
@@ -349,14 +347,14 @@ public class RaftServer {
             this.persistentState.appendLogEntries(request.entries);
             successfulAppend = true;
             updateCommitIndex(Math.min(request.leaderCommit,
-                this.persistentState.log.size() - 1));
+                    this.persistentState.log.size() - 1));
             nextIndex = request.prevLogIndex + 1 + request.entries.size();
         } else {
             nextIndex = Math.max(request.prevLogIndex, 0);
         }
 
         AppendEntriesReply reply = new AppendEntriesReply(myId,
-                this.persistentState.currentTerm, successfulAppend, nextIndex);
+                persistentState.currentTerm, successfulAppend, nextIndex);
         networkManager.sendSerializable(peerMetadataMap.get(
                 request.serverId).address, reply);
     }
@@ -368,7 +366,8 @@ public class RaftServer {
      * @param senderPrevLogterm  prevLogTerm field of the request.
      * @return true iff we can append the sent entries.
      */
-    private synchronized boolean canAppend(int senderPrevLogIndex, int senderPrevLogTerm) {
+    private synchronized boolean canAppend(int senderPrevLogIndex, 
+            int senderPrevLogTerm) {
         if (senderPrevLogIndex == -1) {
             // Here, the sender is trying to get us to append zero or more
             // entries starting at index zero
@@ -384,12 +383,14 @@ public class RaftServer {
     }
 
     /**
-     * Processes a valid RequestVote request from a candidate and sends a reply.
+     * Processes a valid RequestVote request from a candidate and sends a 
+     * reply.
      * @param request data corresponding to RequestVotes request
      */
-    private synchronized void handleRequestVoteRequest(RequestVoteRequest request) {        
-        boolean grantVote =
-                checkGrantVote(request.serverId, request.lastLogIndex, request.lastLogTerm);
+    private synchronized void handleRequestVoteRequest(
+            RequestVoteRequest request) {        
+        boolean grantVote = checkGrantVote(request.serverId, 
+                request.lastLogIndex, request.lastLogTerm);
 
         if (grantVote) {
             assert(this.role == Role.FOLLOWER);
@@ -401,7 +402,8 @@ public class RaftServer {
 
         RequestVoteReply reply = new RequestVoteReply(myId, 
                 this.persistentState.currentTerm, grantVote);
-        networkManager.sendSerializable(peerMetadataMap.get(request.serverId).address, reply);
+        networkManager.sendSerializable(
+                peerMetadataMap.get(request.serverId).address, reply);
     }
 
     /**
@@ -415,8 +417,8 @@ public class RaftServer {
      */
     private synchronized boolean checkGrantVote(String senderId, 
             int senderLastLogIndex, int senderLastLogTerm) {
-        boolean votedForAnotherServer = !(this.persistentState.votedFor == null
-                || this.persistentState.votedFor.equals(senderId));
+        boolean votedForAnotherServer = !(persistentState.votedFor == null
+                || persistentState.votedFor.equals(senderId));
 
         if (votedForAnotherServer) {
             return false;
@@ -450,7 +452,8 @@ public class RaftServer {
      * Processes a valid AppendEntries reply.
      * @param AppendEntriesReply reply to AppendEntriesReply request
      */
-    private synchronized void handleAppendEntriesReply(AppendEntriesReply reply) {
+    private synchronized void handleAppendEntriesReply(
+            AppendEntriesReply reply) {
         if (this.role != Role.LEADER) {
             return;
         }
@@ -467,7 +470,7 @@ public class RaftServer {
                 i += 1;
             }
             commitIndices[commitIndices.length-1] =
-                this.persistentState.log.size();
+                    this.persistentState.log.size();
             Arrays.sort(commitIndices, Collections.reverseOrder());
             updateCommitIndex(commitIndices[commitIndices.length / 2]);
         }
@@ -477,7 +480,7 @@ public class RaftServer {
      * Processes a valid RequestVote reply.
      * @param RequestVoteReply reply to RequestVote request
      */
-    private synchronized void handleRequestVoteReply(RequestVoteReply reply) {
+    private synchronized void handleRequestVoteReply(RequestVoteReply reply){
         if (this.role != Role.CANDIDATE) {
             return;
         }
@@ -493,15 +496,16 @@ public class RaftServer {
      * Wrapper method around role assignment that:
      * (1) changes the role of the server, cancelling all behavior associated
      *     with the old role.
-     * (2) runs initial behavior corresponding to new role, even if the new role
-     *     is the same as the old one.
+     * (2) runs initial behavior corresponding to new role, even if the new
+     *     role is the same as the old one.
      * 
      * We define the behavior of the following transitions in addition to the
      * transitions mentioned in the Raft paper:
      * * Follower -> Follower :: resets the election timeout.
      * * Candidate -> Candidate :: starts a new election.
      * 
-     * Precondition: timeoutTask timer and persistentState state have been init.
+     * Precondition: timeoutTask timer and persistentState state have been 
+     * initialized
      * @param role role that the server instance transitions to. 
      */
     private synchronized void transitionRole(Role role) {
@@ -517,7 +521,7 @@ public class RaftServer {
             timeoutTask.cancel();
         }
 
-        // Runnable below reschedules (or schedules) the election task when run.
+        // Runnable below (re)schedules the election task when run.
         Runnable rescheduleElectionTask = () -> {
 
             // Create a timer task to start a new election.
@@ -530,13 +534,14 @@ public class RaftServer {
                         if (this.isCancelled) {
                             return;
                         }
-                        
+
                         transitionRole(Role.CANDIDATE);
                     }
                 }
             };
 
-            timeoutTimer.schedule(timeoutTask, ThreadLocalRandom.current().nextInt(
+            timeoutTimer.schedule(timeoutTask, 
+                    ThreadLocalRandom.current().nextInt(
                     MIN_ELECTION_TIMEOUT_MS, MAX_ELECTION_TIMEOUT_MS + 1));
         };
 
@@ -551,17 +556,21 @@ public class RaftServer {
             votedForMeSet = new HashSet<String>();
             votedForMeSet.add(myId);
             int lastLogIndex = persistentState.log.size() - 1;
-            int lastLogTerm = this.persistentState.logHasIndex(lastLogIndex) ?
-                    persistentState.log.get(lastLogIndex).term : UNDEFINED_LOG_TERM;
-            logMessage("new election - broadcasting RequestVote requests");
-            RaftMessage request = new RequestVoteRequest(myId, 
-                    persistentState.currentTerm, lastLogIndex, lastLogTerm);
+            int lastLogTerm = this.persistentState.logHasIndex(lastLogIndex) 
+                    ? persistentState.log.get(lastLogIndex).term 
+                    : UNDEFINED_LOG_TERM;
+                    logMessage("new election - broadcasting RequestVote "
+                            + "requests");
+                    RaftMessage request = new RequestVoteRequest(myId, 
+                            persistentState.currentTerm, lastLogIndex, 
+                            lastLogTerm);
 
-            for (ServerMetadata meta : peerMetadataMap.values()) {
-                networkManager.sendSerializable(meta.address, request);
-            }
-            rescheduleElectionTask.run();
-            break;
+                    for (ServerMetadata meta : peerMetadataMap.values()) {
+                        networkManager.sendSerializable(meta.address, 
+                                request);
+                    }
+                    rescheduleElectionTask.run();
+                    break;
         case LEADER:
             // Initializes volatile state specific to leader role.
             for (ServerMetadata meta : peerMetadataMap.values()) {
@@ -570,7 +579,7 @@ public class RaftServer {
             }
 
             this.leaderId = myId;
-            
+
             this.outstandingClientRequestsMap.clear();
 
             // Create a timer task to send heartbeats.
@@ -588,30 +597,42 @@ public class RaftServer {
                         // entries after a heartbeat timeout has passed
                         logMessage("broadcasting heartbeat messages");
 
-                        for (ServerMetadata meta : peerMetadataMap.values()) {
+                        for (ServerMetadata meta : peerMetadataMap.values()){
                             int prevLogIndex = meta.nextIndex - 1;
-                            int prevLogTerm = persistentState.logHasIndex(prevLogIndex)
-                                    ? persistentState.log.get(prevLogIndex).term
-                                            : UNDEFINED_LOG_TERM;
+                            int prevLogTerm = 
+                                    persistentState.logHasIndex(prevLogIndex)
+                                    ? persistentState.log.get(prevLogIndex)
+                                            .term
+                                    : UNDEFINED_LOG_TERM;
                                     ArrayList<LogEntry> logEntries =
                                             new ArrayList<LogEntry>();
-                                    // Note: Currently, we send at most one log
-                                    // entry to the recipient. This may be something
-                                    // we want to optimize in the future.
-                                    if (persistentState.logHasIndex(meta.nextIndex)) {
-                                        logEntries.add(persistentState.log.get(meta.nextIndex));
+                                    // Note: Currently, we send at most one
+                                    // log entry to the recipient. This may
+                                    // be something we want to optimize in 
+                                    // the future.
+                                    if (persistentState
+                                            .logHasIndex(meta.nextIndex)) {
+                                        logEntries.add(
+                                                persistentState.log
+                                                .get(meta.nextIndex));
                                     }
                                     AppendEntriesRequest request =
                                             new AppendEntriesRequest(myId, 
-                                                    persistentState.currentTerm, prevLogIndex,
-                                                    prevLogTerm, logEntries, commitIndex);
-                                    networkManager.sendSerializable(meta.address, request);
+                                                    persistentState
+                                                    .currentTerm, 
+                                                    prevLogIndex,
+                                                    prevLogTerm, 
+                                                    logEntries, 
+                                                    commitIndex);
+                                    networkManager.sendSerializable(
+                                            meta.address, request);
                         }
                     }
                 }
             };
 
-            timeoutTimer.scheduleAtFixedRate(timeoutTask, 0, HEARTBEAT_TIMEOUT_MS);
+            timeoutTimer.scheduleAtFixedRate(timeoutTask, 0, 
+                    HEARTBEAT_TIMEOUT_MS);
             break;
         }
     }
@@ -640,19 +661,21 @@ public class RaftServer {
                         return;
                     }
                     ClientReply reply =
-                            new ClientReply(clientRequest.commandId, myAddress, true, commandResult);
-                                        
-                    networkManager.sendSerializable(clientRequest.clientAddress, reply);
+                            new ClientReply(clientRequest.commandId, 
+                                    myAddress, true, commandResult);
+
+                    networkManager.sendSerializable(
+                            clientRequest.clientAddress, reply);
                     this.outstandingClientRequestsMap.remove(logEntry);
                 }
             });
         }
         this.commitIndex = newCommitIndex;
     }
-    
+
     /**
-     * Wrapper around current term setter that enforces invariants relating to
-     * updating our knowledge of the current term.
+     * Wrapper around current term setter that enforces invariants relating 
+     * to updating our knowledge of the current term.
      * @param newTerm new term that we want to update the current term to.
      */
     private synchronized void updateTerm(int newTerm) {
@@ -661,8 +684,9 @@ public class RaftServer {
     }
 
     /**
-     * Wrapper around info logging that makes sure our logs are annotated with
-     * server-specific properties of interest (e.g., server id, current term).
+     * Wrapper around info logging that makes sure our logs are annotated 
+     * with server-specific properties of interest (e.g., server id, current 
+     * term).
      * @param message any message that we wish to log
      */
     private synchronized void logMessage(Object message) {
@@ -674,17 +698,17 @@ public class RaftServer {
      * Creates+runs a server instance that follows the Raft protocol.
      * @param args args[0] is a list of comma-delimited server addresses and
      *             ports formatted as hostname0:port0,hostname1:port1
-     *             args[1] is an index into the list above (list is 0-indexed)
+     *             args[1] is an index into the list above(list is 0-indexed)
      *             to get our server address
      */
-    
+
     public static void main(String[] args) {
         int myPortIndex = -1;
         ArrayList<InetSocketAddress> serverAddresses = null;
-        
+
         if (args.length == 2) {
             serverAddresses = AddressUtils.parseAddresses(args[0]);
-            
+
             try {
                 myPortIndex = Integer.parseInt(args[1]);
             } catch (NumberFormatException e) {
@@ -693,16 +717,18 @@ public class RaftServer {
         }
 
         if (args.length != 2 || myPortIndex == -1 || serverAddresses == null
-                || myPortIndex < 0 || myPortIndex >= serverAddresses.size()) {
+                || myPortIndex < 0 || myPortIndex >= serverAddresses.size()){
             System.out.println("Please supply exactly two valid arguments");
             System.out.println(
-                    "Usage: <hostname0:port0>,<hostname1:port1>,...,<hostname$n-1$,port$n-1$> <myAddressIndex>");
+                    "Usage: <hostname0:port0>,<hostname1:port1>,"
+                    + "...,<hostname$n-1$,port$n-1$> <myAddressIndex>");
             System.out.println("Note: List of ports is 0-indexed");
             System.exit(1);
         }
-        
-        HashMap<String, InetSocketAddress> serverAddressesMap = new HashMap<String, InetSocketAddress>();
-        
+
+        HashMap<String, InetSocketAddress> serverAddressesMap = 
+                new HashMap<String, InetSocketAddress>();
+
         for (int i = 0; i < serverAddresses.size(); i++) {
             serverAddressesMap.put("Server" + i, serverAddresses.get(i));
         }
@@ -711,7 +737,9 @@ public class RaftServer {
 
         // Java doesn't like calling constructors without an
         // assignment to a variable, even if that variable is not used.
-        RaftServer myServer = new RaftServer(serverAddressesMap, "Server"+myPortIndex);
+        @SuppressWarnings("unused")
+        RaftServer myServer = new RaftServer(serverAddressesMap, 
+                "Server"+myPortIndex);
     }
 
 }

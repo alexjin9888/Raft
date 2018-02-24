@@ -20,8 +20,8 @@ public abstract class RaftMessage implements Serializable {
      * currentTerm of the sender
      */
     public int term;
-    
-    
+
+
     /**
      * @param serverId see top of class file
      * @param term     see top of class file

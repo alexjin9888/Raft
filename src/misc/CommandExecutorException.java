@@ -4,6 +4,7 @@ package misc;
  * A wrapper class for a fatal exception that occurred when trying to execute
  * a command sent by a client.
  */
+@SuppressWarnings("serial")
 public class CommandExecutorException extends RuntimeException {
 
     /**

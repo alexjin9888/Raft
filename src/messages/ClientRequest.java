@@ -15,7 +15,7 @@ public class ClientRequest implements Serializable {
      * Id that the client uses to differentiate between different commands
      */
     public int commandId;
-    
+
     /**
      * Address of the client that sent this message
      */
@@ -29,7 +29,8 @@ public class ClientRequest implements Serializable {
      * @param clientAddress see top of class file
      * @param command see top of class file
      */
-    public ClientRequest(int commandId, InetSocketAddress clientAddress, String command) {
+    public ClientRequest(int commandId, InetSocketAddress clientAddress, 
+            String command) {
         this.commandId = commandId;
         this.clientAddress = clientAddress;
         this.command = command;

@@ -2,13 +2,11 @@ package misc;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Serializable;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -34,22 +32,23 @@ public class CommandExecutor {
 
         singleThreadService = Executors.newSingleThreadExecutor(
                 new ThreadFactory() {
-            public Thread newThread(Runnable r) {
-                final Thread t = new Thread(r);
-                t.setUncaughtExceptionHandler(ueh);
-                return t;
-            }
-        });
+                    public Thread newThread(Runnable r) {
+                        final Thread t = new Thread(r);
+                        t.setUncaughtExceptionHandler(ueh);
+                        return t;
+                    }
+                });
     }
 
     /**
-     * Schedules a Bash command for execution, and calls the passed-in callback
-     * with the command's output after the command has been executed.
+     * Schedules a Bash command for execution, and calls the passed-in 
+     * callback with the command's output after the command has been executed
      * @param command Bash command to be executed.
      * @param handleCommandResultCb Callback that is called with the
      * stdout/stderr output from executing the Bash command.
      */
-    public synchronized void execute(String command, Consumer<String> handleCommandResultCb) {
+    public synchronized void execute(String command, 
+            Consumer<String> handleCommandResultCb) {
         singleThreadService.execute(() -> {
             String result = "";
 
@@ -66,8 +65,8 @@ public class CommandExecutor {
                 }
             } catch (IOException e) {
                 throw new CommandExecutorException("Client command <"
-                        + command + "> execution failed due to I/O exception. "
-                        + "Received exception: " + e);
+                        + command + "> execution failed due to I/O "
+                        + "exception. Received exception: " + e);
             } catch (InterruptedException e) {
                 throw new CommandExecutorException("Client command <"
                         + command + "> execution failed due to "

@@ -29,7 +29,7 @@ public class AppendEntriesReply extends RaftMessage {
         this.successfulAppend = successfulAppend;
         this.nextIndex = nextIndex;
     }
-    
+
     @Override
     public String toString() {
         return "AppendEntriesReply [successfulAppend=" + successfulAppend

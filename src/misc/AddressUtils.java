@@ -35,22 +35,25 @@ public abstract class AddressUtils {
      * hostname0:port0,hostname1:port1,... into a list of InetSocketAddress
      * objects.
      * @param addressStrings a list of address strings to be parsed.
-     * @return a list of InetSocketAddress objects corresponding to the address
-     * strings. If the parsing failed, return null.
+     * @return a list of InetSocketAddress objects corresponding to the 
+     * address strings. If the parsing failed, return null.
      */
-    public static ArrayList<InetSocketAddress> parseAddresses(String addressStrings) {
-        ArrayList<InetSocketAddress> addresses = new ArrayList<InetSocketAddress>();
-        
+    public static ArrayList<InetSocketAddress> parseAddresses(
+            String addressStrings) {
+        ArrayList<InetSocketAddress> addresses = 
+                new ArrayList<InetSocketAddress>();
+
         String[] addressStringsList = addressStrings.split(",");
-        
+
         for (int i=0; i < addressStringsList.length; i++) {
-            InetSocketAddress address = AddressUtils.parseAddress(addressStringsList[i]);
+            InetSocketAddress address = 
+                    AddressUtils.parseAddress(addressStringsList[i]);
             if (address == null) {
                 return null;
             }
             addresses.add(address);
         }
-        
+
         return addresses;
     }
 }

@@ -11,12 +11,12 @@ public abstract class CheckingCancelTimerTask extends TimerTask {
      * True iff the cancel method has been previously called.
      */
     public boolean isCancelled;
-    
+
     public CheckingCancelTimerTask() {
         super();
         isCancelled = false;
     }
-    
+
     /**
      * Wrapper method around java.util.TimerTask#cancel() to set a cancelled
      * flag.
@@ -26,5 +26,5 @@ public abstract class CheckingCancelTimerTask extends TimerTask {
         isCancelled = true;
         return super.cancel();
     }
-    
+
 }

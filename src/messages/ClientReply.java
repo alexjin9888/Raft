@@ -28,14 +28,14 @@ public class ClientReply implements Serializable {
      * Result of the shell command executed
      */
     public String result;
-    
+
     /**
      * @param leaderAddress see top of class file
      * @param success see top of class file
      * @param result see top of class file
      */
-    public ClientReply(int commandId, InetSocketAddress leaderAddress, boolean success,
-            String result) {
+    public ClientReply(int commandId, InetSocketAddress leaderAddress, 
+            boolean success, String result) {
         this.commandId = commandId;
         this.leaderAddress = leaderAddress;
         this.success = success;
@@ -45,8 +45,8 @@ public class ClientReply implements Serializable {
     @Override
     public String toString() {
         return "ClientReply [commandId=" + commandId + ", leaderAddress="
-                + leaderAddress + ", success=" + success + ", result=" + result
-                + "]";
+                + leaderAddress + ", success=" + success + ", result=" + 
+                result + "]";
     }
 
 }
